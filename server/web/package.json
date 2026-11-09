@@ -1,0 +1,16 @@
+{
+  "name": "smartclassroom-web",
+  "version": "0.1.0",
+  "description": "SmartClassroom IoT - Express API + AngularJS web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "angular": "^1.8.3",
+    "express": "^4.21.2",
+    "mongodb": "^6.10.0",
+    "mqtt": "^5.10.0"
+  }
+}

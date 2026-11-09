@@ -1,0 +1,10 @@
+# Laptops and Server Pi
+paho-mqtt>=2.0
+pymongo>=4.0
+
+# Door Pi only (on the Pi: sudo apt install python3-serial libttspico-utils)
+# pyserial
+
+# Room Pi only
+# vosk
+# sounddevice

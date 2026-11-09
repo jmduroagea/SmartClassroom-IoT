@@ -1,0 +1,51 @@
+<!doctype html>
+<html ng-app="smartRoom">
+<head>
+  <meta charset="utf-8">
+  <title>SmartClassroom</title>
+  <script src="/lib/angular.min.js"></script>
+  <script src="/app.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .locked { border-color: #d33; background: #fdeeee; }
+    .error { color: #d33; }
+    button { margin-right: .5rem; padding: .4rem .9rem; }
+    button.active { font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; padding: .3rem; border-bottom: 1px solid #eee; }
+  </style>
+</head>
+<body ng-controller="MainCtrl">
+  <h1>SmartClassroom</h1>
+  <p class="error" ng-if="error">{{ error }}</p>
+
+  <div class="card" ng-class="{ locked: status.locked }">
+    <h2>Room status</h2>
+    <p><b>Inside:</b> {{ status.inside || 'Room empty' }}</p>
+    <p><b>Temperature:</b> {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading yet' }}</p>
+    <p><b>Devices:</b> door {{ status.devices.door }}, room {{ status.devices.room }}</p>
+    <p ng-if="status.locked"><b>System locked.</b> <button ng-click="unlock()">Unlock</button></p>
+  </div>
+
+  <div class="card">
+    <h2>Fan</h2>
+    <p>Current speed: {{ status.fanSpeed }}</p>
+    <button ng-repeat="s in [0, 1, 2, 3]" ng-class="{ active: status.fanSpeed === s }" ng-click="setFan(s)">
+      {{ s === 0 ? 'Off' : 'Speed ' + s }}
+    </button>
+  </div>
+
+  <div class="card">
+    <h2>Registered cards</h2>
+    <table>
+      <tr><th>Card</th><th>Name</th></tr>
+      <tr ng-repeat="u in users"><td>{{ u.card_id }}</td><td>{{ u.name }}</td></tr>
+    </table>
+    <h3>Add a card</h3>
+    <input ng-model="newCard.card_id" placeholder="Card id">
+    <input ng-model="newCard.name" placeholder="Name">
+    <button ng-click="addCard()">Add</button>
+  </div>
+</body>
+</html>
