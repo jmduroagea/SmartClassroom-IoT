@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+vosk-model*/
+*.wav
+.DS_Store
