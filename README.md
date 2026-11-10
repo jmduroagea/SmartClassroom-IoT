@@ -25,27 +25,24 @@ built and how we work**. Read it entirely before writing code.
 
 | Machine | Program | Role |
 |---|---|---|
-| Sensors Pi (`smartroom-sensors`) | `door/` | PIR, RFID reader (UART), USB speaker (espeak-ng), door LED |
-| Sensors Pi (`smartroom-sensors`) | `room/` | DS18B20 temperature probe (every 2 s), USB microphone (Vosk), FS90R fan |
-| Brain Pi (`smartroom-brain`) | Mosquitto | MQTT broker |
-| Brain Pi (`smartroom-brain`) | `server/brain/` | State machine, emergency detection, the only writer to MongoDB |
-| Brain Pi (`smartroom-brain`) | `server/web/` | Express API + AngularJS web app (port 3001) |
+| Door Pi | `door/` | PIR, RFID reader (UART), USB speaker (espeak-ng), door LED |
+| Room Pi | `room/` | DS18B20 temperature probe (every 2 s), USB microphone (Vosk), FS90R fan |
+| Server Pi | Mosquitto | MQTT broker |
+| Server Pi | `server/brain/` | State machine, emergency detection, the only writer to MongoDB |
+| Server Pi | `server/web/` | Express API + AngularJS web app (port 3001) |
 | etu-web2 | MongoDB | Database `smartroom` |
 | Laptop | `emergency_center/` | Simulated emergency centre, subscribes to `glo/alert/#` |
 
-Only two Raspberry Pis are available, so the sensors Pi runs `door` and `room` as **two
-separate programs**, each with its own MQTT connection. They never talk to each other directly.
-
 Architecture rules (agreed with the teachers, never break them):
 
-- **The device programs only talk to the broker.** They publish what they measure and obey orders.
+- **The device Pis only talk to the broker.** They publish what they measure and obey orders.
   They never decide anything.
 - **The web never talks to the Pis.** Every command goes to `glo/web/cmd` and the brain decides.
 - **Only the brain writes to MongoDB.** Express may read MongoDB directly (accepted by
   Mr Gaudou, provided the architecture is shown in a diagram).
 - **Everything works offline.** Speech-to-text (Vosk) and text-to-speech (espeak-ng) run
   locally; no external services.
-- **The broker runs on the brain Pi**, not on a laptop. A laptop broker is only used for
+- **The broker runs on the Server Pi**, not on a laptop. A laptop broker is only used for
   development.
 
 ---
@@ -87,8 +84,8 @@ and publish commands), and a layered structure is enough.
 Each program lives in its own folder (`door/`, `room/`, `server/brain/`, `server/web/`,
 `emergency_center/`), and no device imports code from another. Inside each one, every
 functionality has its own module: the core, the ports, one adapter per device, and `main.py`.
-The only shared code is `common/` (MQTT contract, configuration, clock), which is copied to
-each Pi.
+The only shared code is `common/` (MQTT contract, configuration, clock, message bus), which is
+copied to each Pi. The simulation lives in `compose.yaml` (repository root) and `docker/`.
 
 ### Constants and configuration
 
@@ -102,8 +99,8 @@ each Pi.
 
 - Every machine uses the **same versions**: the Pis, the simulation and CI. Python 3.9
   (Debian bullseye, as on the Pis), Node.js 20 and Mosquitto 2.0.
-- Python versions are pinned with `==` in `requirements-brain.txt` and
-  `requirements-sensors.txt`; CI installs `requirements-dev.txt`. Node versions are pinned
+- Python versions are pinned with `==` in `requirements-brain.txt` (Server Pi) and
+  `requirements-sensors.txt` (Door and Room Pis); CI installs `requirements-dev.txt`. Node versions are pinned
   in `server/web/package-lock.json` (always `npm ci`, never `npm install`, to deploy).
 - All files use Linux line endings (`.gitattributes`), because scripts run on the Pis.
 
@@ -163,10 +160,22 @@ We test each part **independently**, replacing its neighbours with test doubles:
   that the MQTT adapter publishes on the right topic with the right QoS.
 - **FakeClock:** to test timers without waiting.
 
-We use three levels: **unit tests** of each core (run everywhere and in CI), **scenario tests**
-of the whole system against the simulation, and a **hardware check** on each Pi that tests
-every real device one by one and ends with a PASS/FAIL table. In class, the hardware check is
-run first.
+We use three levels, and only the scenario tests need Docker:
+
+- **Unit tests** (`pytest tests/unit`) check each core's logic alone, replacing every
+  neighbour with a test double. No broker, no database, no Docker: they run in seconds and are
+  the first thing to write.
+- **Scenario tests** (`pytest tests/scenarios`) check the whole system end to end. They start
+  the simulation themselves (see below) and stop it at the end. **The test plays the role of
+  the Pis**: it publishes what a Pi would publish (a card, a
+  temperature, a fan confirmation), always built with `common/messages.build()` so it follows
+  the same contract as the real Pis. They are **black box**: they check the result only through
+  MQTT and the web API, never by reading MongoDB directly. What was saved in the database is
+  checked through the web's read endpoints (`/api/access`, `/api/env`, `/api/emergencies`...).
+  No endpoint exists only for tests.
+- **The hardware check** (`python3 -m door.hw_check`, same for room) runs on each Pi in class
+  and ends with a PASS/FAIL table. It is run first: if every device passes and the scenarios
+  pass, a remaining problem can only be in the connection between them.
 
 **Rule:** every pull request that changes logic includes its tests. We do not require TDD.
 The robustness tests T1 to T26 of the specification are covered by these levels.
@@ -175,25 +184,61 @@ The robustness tests T1 to T26 of the specification are covered by these levels.
 
 ## Simulation environment
 
-The whole system runs on one laptop with Docker Compose, without any Raspberry Pi. Each
-component runs in **its own container**, with only the network access it has in reality: the
-door, room and emergency centre containers can only reach the broker, and only the brain and the
-web can reach MongoDB.
+The whole system runs on one laptop with Docker Compose, without any Raspberry Pi.
+Everything is defined in `compose.yaml` (repository root) and `docker/`.
 
-The door and room containers only receive their own folder plus `common/`. So if device code
-reads MongoDB or imports server code, **it fails in the simulation**, exactly as it would on
-the Pi. The architecture rules are checked, not just promised.
+### What runs
 
-The containers use the same base as the Pis (Python 3.9 on Debian bullseye, Node.js 20,
-Mosquitto 2.0) and install the same pinned versions, so the simulation behaves like the Pis.
+- `broker`: Mosquitto 2.0.11 with `server/mosquitto/smartroom.conf`.
+- `mongo`: MongoDB with its data in memory, so **every start is a clean database**.
+- `setup-db`: runs `server/setup_db.py` (indexes and test users) and exits.
+- `brain`: starts once the broker is healthy and `setup-db` has finished.
+- `web`: Express + AngularJS on http://localhost:3001.
 
-The simulated devices are the fake adapters. They are driven through `sim/` topics: a test
-publishes on `sim/door/card`, and the fake RFID reader turns it into a card scan, going through
-the same code path as a real card. Fake actuators report what they did (`sim/door/speaker/said`,
-`sim/room/fan/actual`), so scenarios check the physical result.
+The simulated Pis (`door`, `room`) and the emergency centre will be added to the same file,
+only on the `iot` network, once their fake adapters exist. The fakes will be driven through
+`sim/` topics (for example a card published on `sim/door/card`), going through the same code
+path as the real devices, and will report what they did (`sim/door/speaker/said`). Topics
+starting with `sim/` exist only in the simulation.
 
-The simulation cannot prove the wiring, the RFID frame, Vosk's speed or the audio: that is
-what the hardware check is for.
+### How it reproduces the real system
+
+- **Isolated networks.** `iot` (MQTT) and `db` (MongoDB) are internal: no internet, and only
+  the containers that reach a service in reality are on its network. A program that tries to
+  reach something it should not **fails in the simulation**, exactly as it would on the Pis.
+  `edge` is the only way in from the laptop: the broker (`127.0.0.1:1883`) and the web
+  (`127.0.0.1:3001`), as on the university network. MongoDB is never exposed to the laptop.
+- **Same versions as the Pis.** Python 3.9 on Debian bullseye (`docker/python.Dockerfile`),
+  Node.js 20 (`docker/web.Dockerfile`), Mosquitto 2.0.11, and the same pinned libraries.
+- **Same settings.** Each container gets the same environment variables as its Pi
+  (`MQTT_HOST`, `MONGO_URI`...), with simulation values. The code does not know where it runs.
+- **Mounted code.** Each container only receives the files it uses, read-only. Code changes
+  need no rebuild, only a restart; images are rebuilt only when dependencies change.
+
+### How to use it
+
+```
+docker compose up --build    # first time, or after changing requirements or package-lock
+docker compose up -d         # start everything in the background
+docker compose ps            # state of each container
+docker compose logs brain    # what a program is doing
+docker compose restart brain # after changing its code
+docker compose down          # stop everything (the database is deleted)
+```
+
+Docker Desktop must be running. To play a Pi by hand, publish what it would publish:
+
+```
+docker compose exec broker mosquitto_pub -t glo/door/rfid -m '{"ts":"2026-11-10T18:00:00","card_id":"CARD_GLORIA"}'
+docker compose exec broker mosquitto_sub -t "glo/#" -v    # watch every message
+```
+
+In PowerShell, escape the inner quotes of the JSON as `\"`.
+
+### What it cannot prove
+
+The wiring, the RFID frame, Vosk's speed on a Pi 3, the servo and the audio: that is what the
+hardware check is for. The laptop is x86 and the Pis are ARM; nothing in our code depends on it.
 
 ---
 
@@ -205,6 +250,10 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on `m
   `ruff check .` (lint only, no formatting; `ruff.toml` targets Python 3.9, so code that
   would not run on the Pis fails) and `pytest tests/unit`.
 - **Web job**, inside `node:20-bullseye-slim`: `npm ci` and `npm test`.
+- **Scenarios job**, directly on the GitHub runner (it starts containers itself, so it cannot
+  run inside one): `pytest tests/scenarios`, which builds and starts the simulation. The system
+  under test runs the Pis' versions inside the containers; the test runner only acts as a
+  client.
 
 The check is required by the `main` ruleset, so a pull request with failing checks cannot be
 merged.
@@ -216,8 +265,9 @@ Deployment is one manual command (below).
 
 ## Deployment to the Raspberry Pis
 
-- Two Pis 3 B+ with Raspbian 11 (32-bit), prepared with `deploy/setup_sensors.sh` and
-  `deploy/setup_brain.sh`. Both reach the internet and etu-web2 directly (no proxy, no tunnel).
+- Three Pis 3 B+ with Raspbian 11 (32-bit), each prepared once with its setup script in
+  `deploy/` (door, room or server). They reach the internet and etu-web2 directly (no proxy,
+  no tunnel).
 - We reach them by **SSH from the university computer** (the university network does not
   accept our laptops). There is no VPN: etu-web2 is only reachable from the university, so
   tests and development always use the simulation's own MongoDB.
@@ -225,10 +275,10 @@ Deployment is one manual command (below).
   endings on the Pi before running it (piping it from PowerShell adds a `\r` that breaks bash):
   `ssh pi@IP "tr -d '\r' < /tmp/script.sh > /tmp/clean.sh && bash /tmp/clean.sh"`
 - **Getting the code:** each Pi clones the repository and pulls.
-- **Deploying:** `deploy/deploy.sh <sensors|brain>` updates the code, runs the hardware check
-  and restarts the systemd services.
-- **Configuration:** each Pi has a `.env` (never committed) with its settings: the brain Pi's IP
-  as `MQTT_HOST` on the sensors Pi, the MongoDB URI on the brain Pi. The IPs come from DHCP and
+- **Deploying:** `deploy/deploy.sh <door|room|server>` updates the code, runs the hardware check
+  and restarts the systemd service.
+- **Configuration:** each Pi has a `.env` (never committed) with its settings: the Server Pi's IP
+  as `MQTT_HOST` on the Door and Room Pis, the MongoDB URI on the Server Pi. The IPs come from DHCP and
   could change, so they are only ever written there.
 - **Time at the university is for integration only.** Development happens at home with the
   simulation. Test first what cannot be simulated: RFID, Vosk on the Pi 3, the fan, the audio.
