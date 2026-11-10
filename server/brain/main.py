@@ -1,4 +1,5 @@
 import json
+import os
 import paho.mqtt.client as mqtt
 from common.topics import DOOR_RFID, DOOR_SPEAKER_SAY
 from server.brain.core.state_machine import StateMachine
@@ -40,8 +41,11 @@ def main():
     client.on_connect = on_connect
     client.on_message = on_message
 
-    client.connect("localhost", 1883, 60)
-    print("[Brain] Server started, listening for events...")
+    broker_host = os.getenv("MQTT_HOST", "localhost")
+    broker_port = int(os.getenv("MQTT_PORT", 1883))
+
+    client.connect_async(broker_host, broker_port, 60)
+    print(f"[Brain] Server started, connecting asynchronously to {broker_host}:{broker_port}...")
     client.loop_forever()
 
 if __name__ == "__main__":
