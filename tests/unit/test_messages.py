@@ -88,6 +88,27 @@ def test_wrong_type_is_rejected(topic, data):
         messages.validate(topic, data)
 
 
+# --- Numbers that are not valid JSON (faulty sensor) ----------------------
+
+
+@pytest.mark.parametrize("temp", [float("nan"), float("inf"), float("-inf")])
+def test_nan_and_infinity_are_rejected(temp):
+    with pytest.raises(InvalidMessage, match="finite"):
+        messages.validate(topics.ROOM_ENV, {"ts": TS, "temp": temp})
+
+
+def test_build_never_produces_nan():
+    with pytest.raises(InvalidMessage):
+        messages.build(topics.ROOM_ENV, ts=TS, temp=float("nan"))
+
+
+@pytest.mark.parametrize("word", ["NaN", "Infinity", "-Infinity"])
+def test_received_nan_is_rejected(word):
+    payload = '{"ts": "2026-11-10T11:00:00", "temp": ' + word + "}"
+    with pytest.raises(InvalidMessage, match="finite"):
+        messages.parse(topics.ROOM_ENV, payload)
+
+
 # --- Other invalid messages ------------------------------------------------
 
 

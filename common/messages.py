@@ -9,6 +9,7 @@ A wrong message raises InvalidMessage, which says what is wrong.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 
 from common import topics
@@ -78,7 +79,7 @@ def build(topic: str, **fields) -> str:
     Example: build(topics.DOOR_RFID, ts="2026-11-10T11:00:00", card_id="0F00A1B2C3")
     """
     validate(topic, fields)
-    return json.dumps(fields)
+    return json.dumps(fields, allow_nan=False)
 
 
 def parse(topic: str, payload: bytes | str) -> dict:
@@ -136,6 +137,9 @@ def _check_fields(topic: str, data: dict, expected: dict) -> None:
             raise InvalidMessage(f"{topic}: {name}={value!r} has the wrong type")
         if isinstance(value, str) and not value:
             raise InvalidMessage(f"{topic}: {name} must not be empty")
+        # NaN and infinity are not valid JSON: Express could not read the message.
+        if isinstance(value, float) and not math.isfinite(value):
+            raise InvalidMessage(f"{topic}: {name}={value!r} must be a finite number")
     if "ts" in data:
         try:
             datetime.fromisoformat(data["ts"])
