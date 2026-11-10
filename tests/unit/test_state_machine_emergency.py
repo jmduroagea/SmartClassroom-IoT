@@ -8,7 +8,7 @@ class TestEmergencyTransitions(unittest.TestCase):
             sm = StateMachine()
             sm.state = initial_state
             actions = sm.handle_emergency({"type": "EMERGENCY"})
-            
+
             self.assertEqual(sm.state, State.EMERGENCY)
             self.assertTrue(any(a.get("type") == "publish" and a.get("topic") == "glo/alert/units" for a in actions))
             self.assertTrue(any(a.get("type") == "set_fan" and a.get("locked") is True for a in actions))
