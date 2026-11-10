@@ -62,7 +62,9 @@ WEB_ACTIONS = {
 
 # Delivery guarantee per topic: alerts must arrive exactly once (QoS 2)
 DEFAULT_QOS = 1
-QOS = {topics.ALERT_UNITS: 2, topics.ALERT_CALL: 2}
+# The subscription to every alert needs QoS 2 too: MQTT delivers with the lower
+# of the publish and subscribe QoS, so a QoS 1 subscription would lose the guarantee.
+QOS = {topics.ALERT_UNITS: 2, topics.ALERT_CALL: 2, topics.ALERT_ALL: 2}
 
 
 class InvalidMessage(ValueError):

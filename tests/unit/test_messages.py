@@ -51,6 +51,7 @@ def test_every_topic_has_a_qos():
     assert messages.qos(topics.DOOR_RFID) == 1
     assert messages.qos(topics.ALERT_UNITS) == 2
     assert messages.qos(topics.ALERT_CALL) == 2
+    assert messages.qos(topics.ALERT_ALL) == 2  # subscription to every alert
 
 
 # --- Missing field ---------------------------------------------------------
