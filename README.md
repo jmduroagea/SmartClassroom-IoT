@@ -7,7 +7,8 @@ A connected classroom with two use cases:
 
 1. **Access control and voice assistant.** A PIR sensor detects someone at the door, they scan
    their RFID card, the speaker welcomes them and says the temperature, and they control a fan
-   by voice ("I'm hot", "I'm cold", "What's the temperature?", "Help") or from the web app.
+   by voice ("Ok Computer, I'm hot", "Ok Computer, I'm cold", "Ok Computer, what's the
+   temperature?", "Ok Computer, help") or from the web app.
    Three unknown cards in a row lock the system until it is unlocked from the web.
 2. **Thermal emergency and evacuation.** A fast temperature rise (≥ 5 °C in 30 s) triggers an
    emergency from any state: the fan stops and is locked, the door LED blinks, the speaker
@@ -24,24 +25,27 @@ built and how we work**. Read it entirely before writing code.
 
 | Machine | Program | Role |
 |---|---|---|
-| Door Pi | `door/` | PIR, RFID reader (UART), USB speaker, door LED |
-| Room Pi | `room/` | DS18B20 temperature probe (every 2 s), USB microphone (Vosk), FS90R fan |
-| Server Pi | Mosquitto | MQTT broker |
-| Server Pi | `server/brain/` | State machine, emergency detection, the only writer to MongoDB |
-| Server Pi | `server/web/` | Express API + AngularJS web app (port 3001) |
-| etu-web2 (laptop as fallback) | MongoDB | Database `smartroom` |
+| Sensors Pi (`smartroom-sensors`) | `door/` | PIR, RFID reader (UART), USB speaker (espeak-ng), door LED |
+| Sensors Pi (`smartroom-sensors`) | `room/` | DS18B20 temperature probe (every 2 s), USB microphone (Vosk), FS90R fan |
+| Brain Pi (`smartroom-brain`) | Mosquitto | MQTT broker |
+| Brain Pi (`smartroom-brain`) | `server/brain/` | State machine, emergency detection, the only writer to MongoDB |
+| Brain Pi (`smartroom-brain`) | `server/web/` | Express API + AngularJS web app (port 3001) |
+| etu-web2 | MongoDB | Database `smartroom` |
 | Laptop | `emergency_center/` | Simulated emergency centre, subscribes to `glo/alert/#` |
+
+Only two Raspberry Pis are available, so the sensors Pi runs `door` and `room` as **two
+separate programs**, each with its own MQTT connection. They never talk to each other directly.
 
 Architecture rules (agreed with the teachers, never break them):
 
-- **The device Pis only talk to the broker.** They publish what they measure and obey orders.
+- **The device programs only talk to the broker.** They publish what they measure and obey orders.
   They never decide anything.
 - **The web never talks to the Pis.** Every command goes to `glo/web/cmd` and the brain decides.
 - **Only the brain writes to MongoDB.** Express may read MongoDB directly (accepted by
   Mr Gaudou, provided the architecture is shown in a diagram).
-- **Everything works offline.** Speech-to-text (Vosk) and text-to-speech (pico2wave) run
+- **Everything works offline.** Speech-to-text (Vosk) and text-to-speech (espeak-ng) run
   locally; no external services.
-- **The broker runs on the Server Pi**, not on a laptop. A laptop broker is only used for
+- **The broker runs on the brain Pi**, not on a laptop. A laptop broker is only used for
   development.
 
 ---
@@ -94,6 +98,21 @@ each Pi.
 - **Secrets never go in the repository.** Local values go in a `.env` file, which git ignores.
   The repository is public, and GitHub secret scanning blocks pushes that contain secrets.
 
+### Dependencies
+
+- Every machine uses the **same versions**: the Pis, the simulation and CI. Python 3.9
+  (Debian bullseye, as on the Pis), Node.js 20 and Mosquitto 2.0.
+- Python versions are pinned with `==` in `requirements-brain.txt` and
+  `requirements-sensors.txt`; CI installs `requirements-dev.txt`. Node versions are pinned
+  in `server/web/package-lock.json` (always `npm ci`, never `npm install`, to deploy).
+- All files use Linux line endings (`.gitattributes`), because scripts run on the Pis.
+
+### Web security
+
+AngularJS has known vulnerabilities with no fix (it is abandoned, but required by the course).
+Never insert user text as HTML: no `ng-bind-html` and no `$sce.trustAsHtml`. `{{ }}` escapes
+text and is safe.
+
 ### Time is a port
 
 The brain has 3 s, 5 s, 30 s, 60 s and 2 min timers. All code gets the time and schedules
@@ -105,13 +124,14 @@ moves time forward instantly (`clock.advance(3)`). **Never call `time.time()`,
 
 - **RFID debounce:** the reader repeats a card while it is held; the same card is ignored for
   2 s.
-- **Speaker:** no queue. If a new text arrives while one is playing, only the most recent one is
-  kept and played next. Fixed sentences (alarm, prompts) are generated as WAV files once at
-  start-up, because pico2wave is slow on a Pi 3.
+- **Speaker:** espeak-ng, no queue. If a new text arrives while one is playing, only the most
+  recent one is kept and played next.
 - **Temperature:** readings with a failed CRC and readings of exactly 85.0 °C (the DS18B20
   power-on value) are discarded and logged, so a sensor fault never looks like a fire.
-- **Voice:** Vosk uses a grammar limited to our phrases plus `[unk]`, and results with low
-  confidence are discarded, so background noise or the alarm itself does not trigger commands.
+- **Voice:** every command starts with the wake word **"Ok Computer"**, including "Help".
+  The speaker never says the wake word (a unit test checks every sentence), so it cannot
+  trigger commands by itself, and people can speak while it is talking. Vosk also uses a
+  grammar limited to our phrases plus `[unk]`, and discards results with low confidence.
 
 ### Brain behaviour
 
@@ -164,6 +184,9 @@ The door and room containers only receive their own folder plus `common/`. So if
 reads MongoDB or imports server code, **it fails in the simulation**, exactly as it would on
 the Pi. The architecture rules are checked, not just promised.
 
+The containers use the same base as the Pis (Python 3.9 on Debian bullseye, Node.js 20,
+Mosquitto 2.0) and install the same pinned versions, so the simulation behaves like the Pis.
+
 The simulated devices are the fake adapters. They are driven through `sim/` topics: a test
 publishes on `sim/door/card`, and the fake RFID reader turns it into a card scan, going through
 the same code path as a real card. Fake actuators report what they did (`sim/door/speaker/said`,
@@ -176,30 +199,37 @@ what the hardware check is for.
 
 ## Continuous integration
 
-GitHub Actions runs on every pull request: `ruff` (lint and format) and `pytest tests/unit`.
-The check is required by the `main` ruleset, so a pull request with failing tests cannot be
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on `main`:
+
+- **Python job**, inside `python:3.9-slim-bullseye` (the Pis' Python and Debian):
+  `ruff check .` (lint only, no formatting; `ruff.toml` targets Python 3.9, so code that
+  would not run on the Pis fails) and `pytest tests/unit`.
+- **Web job**, inside `node:20-bullseye-slim`: `npm ci` and `npm test`.
+
+The check is required by the `main` ruleset, so a pull request with failing checks cannot be
 merged.
 
-There is **no continuous deployment**: GitHub cannot reach the Pis on the university network,
-and we do not modify the teacher's Pi setup. Deployment is one manual command (below).
+There is **no continuous deployment**: GitHub cannot reach the Pis on the university network.
+Deployment is one manual command (below).
 
 ---
 
 ## Deployment to the Raspberry Pis
 
-- The Pis are **preconfigured by the teacher**. We never reflash them and change as little as
-  possible.
-- We reach them by **SSH from the university computer** (they do not accept connections from
-  our laptops). They only see the university network.
-- **First session:** run `deploy/inventory.sh` on each Pi to list what is already installed
-  (Python packages, Mosquitto, Node.js, pico2wave, Vosk model) and whether the Pi reaches the
-  internet and etu-web2 (port 27017).
-- **Getting the code:** if the Pis reach the internet, each Pi clones the repository and pulls.
-  Otherwise the university computer pulls and copies with `rsync` over SSH.
-- **Deploying:** `deploy/deploy.sh <door|room|server>` updates the code, runs the hardware
-  check and restarts the systemd service.
-- **Configuration:** each Pi gets its settings (Server Pi address as `MQTT_HOST`, MongoDB URI)
-  through environment variables in its systemd service, never in the code.
+- Two Pis 3 B+ with Raspbian 11 (32-bit), prepared with `deploy/setup_sensors.sh` and
+  `deploy/setup_brain.sh`. Both reach the internet and etu-web2 directly (no proxy, no tunnel).
+- We reach them by **SSH from the university computer** (the university network does not
+  accept our laptops). There is no VPN: etu-web2 is only reachable from the university, so
+  tests and development always use the simulation's own MongoDB.
+- **Running a script on a Pi from Windows:** copy it with `scp` and remove the Windows line
+  endings on the Pi before running it (piping it from PowerShell adds a `\r` that breaks bash):
+  `ssh pi@IP "tr -d '\r' < /tmp/script.sh > /tmp/clean.sh && bash /tmp/clean.sh"`
+- **Getting the code:** each Pi clones the repository and pulls.
+- **Deploying:** `deploy/deploy.sh <sensors|brain>` updates the code, runs the hardware check
+  and restarts the systemd services.
+- **Configuration:** each Pi has a `.env` (never committed) with its settings: the brain Pi's IP
+  as `MQTT_HOST` on the sensors Pi, the MongoDB URI on the brain Pi. The IPs come from DHCP and
+  could change, so they are only ever written there.
 - **Time at the university is for integration only.** Development happens at home with the
   simulation. Test first what cannot be simulated: RFID, Vosk on the Pi 3, the fan, the audio.
 

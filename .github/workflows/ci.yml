@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    container: python:3.9-slim-bullseye   # same Python and Debian as the Pis
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest tests/unit
+
+  web:
+    runs-on: ubuntu-latest
+    container: node:20-bullseye-slim      # same Node major as the brain Pi
+    defaults:
+      run:
+        working-directory: server/web
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm test --if-present
