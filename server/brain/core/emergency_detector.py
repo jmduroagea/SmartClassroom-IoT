@@ -10,7 +10,7 @@ class EmergencyDetector:
 
     def process_temperature(self, timestamp: float, temp: float) -> bool:
         self.readings.append((timestamp, temp))
-        
+
         # Eliminar lecturas más antiguas que los 30 segundos
         cutoff = timestamp - self.window_seconds
         self.readings = [r for r in self.readings if r[0] >= cutoff]
