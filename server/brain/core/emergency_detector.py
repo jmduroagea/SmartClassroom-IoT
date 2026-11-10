@@ -19,7 +19,7 @@ class EmergencyDetector:
             return False
 
         self.readings.append((timestamp, temp))
-        
+
         cutoff = timestamp - self.window_seconds
         self.readings = [r for r in self.readings if r[0] >= cutoff]
 
