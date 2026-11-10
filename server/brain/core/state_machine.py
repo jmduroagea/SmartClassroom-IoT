@@ -30,7 +30,7 @@ class StateMachine:
             self.failed_attempts += 1
             actions.append({"type": "say", "text": "Card not recognized"})
             actions.append({"type": "log_system", "level": "WARN", "msg": f"Unrecognized card: {card_id}"})
-            
+
             if self.failed_attempts >= 3:
                 self.state = State.LOCKED
                 actions.append({"type": "say", "text": "System locked"})
