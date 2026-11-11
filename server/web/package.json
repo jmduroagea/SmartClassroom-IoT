@@ -4,7 +4,8 @@
   "description": "SmartClassroom IoT - Express API + AngularJS web app",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "license": "ISC",
   "dependencies": {
@@ -12,5 +13,8 @@
     "express": "4.22.3",
     "mongodb": "6.22.0",
     "mqtt": "5.16.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.2"
   }
 }
