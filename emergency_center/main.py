@@ -17,7 +17,7 @@ def on_message(client, userdata, msg):
         payload = msg.payload.decode("utf-8")
 
     print("\n" + "="*50)
-    print(f"🚨 [ALERTA DE EMERGENCIA RECIBIDA]")
+    print("🚨 [ALERTA DE EMERGENCIA RECIBIDA]")
     print(f"Tópico : {msg.topic}")
     print(f"Mensaje: {json.dumps(payload, indent=2)}")
     print("="*50 + "\n")

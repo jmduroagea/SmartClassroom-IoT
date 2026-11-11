@@ -9,6 +9,16 @@ x-python: &python
   image: smartroom-python
 
 services:
+  emergency_center:
+    build:
+      context: .
+      dockerfile: emergency_center/Dockerfile
+    container_name: smart_emergency_center
+    networks:
+      - smart_classroom_net
+    depends_on:
+      - mqtt
+
   broker:
     image: eclipse-mosquitto:2.0.11            # same version as the server Pi
     volumes:
@@ -89,12 +99,6 @@ networks:
   db: { internal: true }     # only the brain, the web and setup-db reach MongoDB
   edge: {}                   # the only way in from the laptop: broker and web
 
-  emergency_center:
-    build:
-      context: .
-      dockerfile: emergency_center/Dockerfile
-    container_name: smart_emergency_center
-    networks:
-      - smart_classroom_net
-    depends_on:
-      - mqtt
+networks:
+  smart_classroom_net:
+    driver: bridge
