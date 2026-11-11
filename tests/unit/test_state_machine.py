@@ -81,55 +81,63 @@ class TestStateMachine(unittest.TestCase):
         # Timeout back to IDLE
         self.clock.advance(30.0)
         self.assertEqual(self.sm.state, State.IDLE)
+    def test_fan_initialization(self):
+        sm = StateMachine(clock=self.clock, emit=self.emit)
+        self.assertEqual(sm.fan_speed, 0)
+
+    def test_fan_speed_sync_web_and_voice(self):
+        self.sm.state = State.INSIDE
+        self.sm.handle_web_fan(FAN_SPEEDS[3])
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[3])
+        actions = self.sm.handle_voice_command("cold")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[2])
+        self.assertEqual(actions, [{"type": "set_fan", "speed": FAN_SPEEDS[2]}])
+
     def test_voice_hot_from_off_starts_at_middle(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.INSIDE
-        sm.fan_speed = 0
-        actions = sm.handle_voice_command("hot")
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = 0
+        actions = self.sm.handle_voice_command("hot")
         mid_speed = FAN_SPEEDS[len(FAN_SPEEDS) // 2]
-        self.assertEqual(sm.fan_speed, mid_speed)
+        self.assertEqual(self.sm.fan_speed, mid_speed)
         self.assertEqual(actions, [{"type": "set_fan", "speed": mid_speed}])
 
     def test_voice_hot_one_level_up(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.INSIDE
-        sm.fan_speed = FAN_SPEEDS[1]
-        actions = sm.handle_voice_command("hot")
-        self.assertEqual(sm.fan_speed, FAN_SPEEDS[2])
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[1]
+        actions = self.sm.handle_voice_command("hot")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[2])
         self.assertEqual(actions[0], {"type": "set_fan", "speed": FAN_SPEEDS[2]})
 
     def test_voice_hot_at_maximum(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.INSIDE
-        sm.fan_speed = FAN_SPEEDS[-1]
-        actions = sm.handle_voice_command("hot")
-        self.assertEqual(sm.fan_speed, FAN_SPEEDS[-1])
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[-1]
+        actions = self.sm.handle_voice_command("hot")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[-1])
         self.assertEqual(actions, [{"type": "say", "text": "The fan is at maximum."}])
 
     def test_voice_cold_one_level_down(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.INSIDE
-        sm.fan_speed = FAN_SPEEDS[2]
-        actions = sm.handle_voice_command("cold")
-        self.assertEqual(sm.fan_speed, FAN_SPEEDS[1])
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[2]
+        actions = self.sm.handle_voice_command("cold")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[1])
         self.assertEqual(actions, [{"type": "set_fan", "speed": FAN_SPEEDS[1]}])
 
     def test_voice_cold_already_off(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.INSIDE
-        sm.fan_speed = 0
-        actions = sm.handle_voice_command("cold")
-        self.assertEqual(sm.fan_speed, 0)
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = 0
+        actions = self.sm.handle_voice_command("cold")
+        self.assertEqual(self.sm.fan_speed, 0)
         self.assertEqual(actions, [{"type": "say", "text": "The fan is already off."}])
 
     def test_voice_refused_during_emergency(self):
-        from unittest.mock import MagicMock
-        sm = StateMachine(clock=MagicMock(), emit=MagicMock())
-        sm.state = State.EMERGENCY
-        actions = sm.handle_voice_command("hot")
+        self.sm.state = State.EMERGENCY
+        actions = self.sm.handle_voice_command("hot")
         self.assertEqual(actions, [])
+
+    def test_fan_speed_not_reset_by_unknown_card(self):
+        self.sm.state = State.INSIDE
+        self.sm.handle_web_fan(FAN_SPEEDS[-1])
+        self.sm.handle_card("UNKNOWN", is_known=False)
+        actions = self.sm.handle_voice_command("hot")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[-1])
+        self.assertEqual(actions, [{"type": "say", "text": "The fan is at maximum."}])

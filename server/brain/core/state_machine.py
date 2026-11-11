@@ -28,6 +28,7 @@ class StateMachine:
         self.last_temp_save_time = 0.0
         self.last_known_temp = None
         self.current_timer = None
+        self.fan_speed = 0
 
     def _cancel_timer(self):
         """Cancels any pending timer."""
@@ -124,6 +125,7 @@ class StateMachine:
                 actions.append({"type": "say", "text": f"Goodbye, {name_str}."})
                 actions.append({"type": "access", "access": "out", "card_id": card_id})
                 actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
+                self.fan_speed = 0
                 actions.append({"type": "set_fan", "speed": 0})
                 actions.append({"type": "set_mic", "enabled": False})
                 actions.append({"type": "set_pir", "enabled": True})
@@ -147,6 +149,7 @@ class StateMachine:
         """Triggers emergency mode."""
         self.state = State.EMERGENCY
         self._cancel_timer()
+        self.fan_speed = 0
         return [
             {"type": "set_fan", "speed": 0, "locked": True},
             {"type": "set_led", "color": "red", "mode": "blink"},
@@ -180,13 +183,12 @@ class StateMachine:
             actions.append({"type": "save_temperature", "value": temp})
         return actions
 
-    def handle_voice_command(self, command) -> list:
+    def handle_voice_command(self, command: str) -> list:
         """Handle voice commands ('hot', 'cold') strictly while INSIDE and not in EMERGENCY."""
         if self.state == State.EMERGENCY or self.state != State.INSIDE:
             return []
 
-        text = command if isinstance(command, str) else (command.get("text") or command.get("command") or "")
-        text = text.strip().lower()
+        text = command.strip().lower()
 
         actions = []
         speeds = FAN_SPEEDS
@@ -219,6 +221,7 @@ class StateMachine:
         """Handles fan commands exclusively from the web."""
         if self.state == State.EMERGENCY:
             return []
+        self.fan_speed = speed_level
         return [{"type": "set_fan", "speed": speed_level}]
 
     def handle_register_card(self, card_id: str, name: str) -> list:
