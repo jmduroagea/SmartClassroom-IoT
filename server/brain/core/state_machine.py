@@ -17,13 +17,13 @@ class StateMachine:
     def handle_card(self, card_id: str, is_known: bool) -> list:
         if self.state == State.EMERGENCY:
             return []
-            
+
         if self.state == State.LOCKED:
             return [
                 {"type": "set_led", "color": "red", "mode": "pulse"},
                 {"type": "log_system", "level": "WARN", "msg": f"Access denied (LOCKED) for {card_id}"}
             ]
-            
+
         if not is_known:
             self.failed_attempts += 1
             actions = [
@@ -40,7 +40,7 @@ class StateMachine:
             self.current_user = card_id
             self.failed_attempts = 0
             return [{"type": "set_led", "color": "green", "mode": "pulse"}]
-            
+
         if self.state == State.INSIDE:
             if self.current_user == card_id:
                 self.state = State.IDLE
@@ -63,7 +63,7 @@ class StateMachine:
             if user_name:
                 actions.append({"type": "say", "text": f"Goodbye, {user_name}"})
             actions.append({"event_type": "out", "card_id": card_id})
-            
+
         actions.extend(self.handle_card(card_id, is_known))
         return actions
 
@@ -107,7 +107,7 @@ class StateMachine:
             {"type": "set_pir", "status": "off"},
             {"type": "publish", "topic": "glo/alert/units", "payload": "EMERGENCY_TRIGGERED"}
         ]
-        
+
     def handle_fan_command(self, command: dict) -> list:
         if self.state == State.EMERGENCY:
             return [{"type": "log_system", "level": "WARN", "msg": "Fan command refused: system in EMERGENCY"}]
