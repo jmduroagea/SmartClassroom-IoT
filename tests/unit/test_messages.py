@@ -43,14 +43,24 @@ def test_null_person_is_accepted_in_alert():
         {"action": "end_emergency"},
     ],
 )
+
 def test_every_web_action_is_accepted(data):
     messages.validate(topics.WEB_CMD, data)
 
+@pytest.mark.parametrize("color", ["green", "red"])
+@pytest.mark.parametrize("mode", ["pulse", "blink", "off"])
+def test_every_led_order_is_accepted(color, mode):
+    messages.validate(topics.DOOR_LED_CMD, {"color": color, "mode": mode})
+
+def test_old_led_message_without_color_is_rejected():
+    with pytest.raises(InvalidMessage, match="missing"):
+        messages.validate(topics.DOOR_LED_CMD, {"mode": "off"})
 
 def test_every_topic_has_a_qos():
     assert messages.qos(topics.DOOR_RFID) == 1
     assert messages.qos(topics.ALERT_UNITS) == 2
     assert messages.qos(topics.ALERT_CALL) == 2
+    assert messages.qos(topics.ALERT_ALL) == 2  # subscription to every alert
 
 
 # --- Missing field ---------------------------------------------------------
@@ -116,7 +126,8 @@ def test_received_nan_is_rejected(word):
     "topic, data",
     [
         (topics.ROOM_FAN_CMD, {"speed": 9}),
-        (topics.DOOR_LED_CMD, {"mode": "disco"}),
+        (topics.DOOR_LED_CMD, {"color": "green", "mode": "open"}),   # "open" was spec v3
+        (topics.DOOR_LED_CMD, {"color": "blue", "mode": "pulse"}),
         (topics.ROOM_VOICE, {"ts": TS, "command": "dance"}),
         (topics.WEB_CMD, {"action": "fan", "speed": 7}),
     ],
@@ -124,6 +135,7 @@ def test_received_nan_is_rejected(word):
 def test_value_outside_the_allowed_list_is_rejected(topic, data):
     with pytest.raises(InvalidMessage, match="must be one of"):
         messages.validate(topic, data)
+
 
 
 def test_unknown_web_action_is_rejected():

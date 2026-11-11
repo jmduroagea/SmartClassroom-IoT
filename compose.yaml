@@ -1,0 +1,90 @@
+# SmartClassroom simulation: the whole system on one laptop, no Raspberry Pi.
+# Each container only reaches what its real machine reaches.
+name: smartroom
+
+x-python: &python
+  build:
+    context: .
+    dockerfile: docker/python.Dockerfile
+  image: smartroom-python
+
+services:
+  broker:
+    image: eclipse-mosquitto:2.0.11            # same version as the server Pi
+    volumes:
+      - ./server/mosquitto/smartroom.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "127.0.0.1:1883:1883"                  # tests on the laptop play the Pis' role
+    networks: [iot, edge]
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "health", "-m", "ok"]
+      interval: 2s
+      retries: 15
+
+  mongo:
+    image: mongo:7.0                           # provisional: must match etu-web2's version
+    tmpfs: [/data/db]                          # in memory: every start is a clean database
+    networks: [db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      retries: 15
+
+  setup-db:
+    <<: *python
+    command: python server/setup_db.py
+    volumes:
+      - ./server/setup_db.py:/app/server/setup_db.py:ro
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: smartroom
+    networks: [db]
+    depends_on:
+      mongo: { condition: service_healthy }
+    restart: "no"
+
+  brain:
+    <<: *python
+    command: python server/brain.py            # switch to the new brain when it is merged
+    volumes:
+      - ./server/brain.py:/app/server/brain.py:ro
+      - ./common:/app/common:ro
+    environment:
+      MQTT_HOST: broker
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: smartroom
+    networks: [iot, db]
+    depends_on:
+      broker: { condition: service_healthy }
+      setup-db: { condition: service_completed_successfully }
+    restart: on-failure
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: smartroom-web
+    volumes:
+      - ./server/web/server.js:/app/server.js:ro
+      - ./server/web/app.js:/app/app.js:ro
+      - ./server/web/config.js:/app/config.js:ro
+      - ./server/web/public:/app/public:ro
+    environment:
+      MQTT_HOST: broker
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: smartroom
+      PORT: "3001"
+      # Simulation only: a known password, so one command starts everything and the
+      # tests can use it. The real server (config.js) still refuses to start without one.
+      WEB_PASSWORD: ${WEB_PASSWORD:-simulation}
+    ports:
+      - "127.0.0.1:3001:3001"                  # open http://localhost:3001
+    networks: [iot, db, edge]
+    depends_on:
+      broker: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+
+networks:
+  iot: { internal: true }    # MQTT traffic between programs, no internet
+  db: { internal: true }     # only the brain, the web and setup-db reach MongoDB
+  edge: {}                   # the only way in from the laptop: broker and web

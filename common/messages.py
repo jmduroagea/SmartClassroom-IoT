@@ -16,7 +16,8 @@ from common import topics
 
 # Allowed values (also part of the contract)
 FAN_SPEEDS = (0, 1, 2, 3)  # 0 = stopped, 1-3 = speed levels
-LED_MODES = ("open", "blink", "off")
+LED_COLORS = ("green", "red")
+LED_MODES = ("pulse", "blink", "off")  # pulse = on for 3 s, then the Door Pi switches it off
 VOICE_COMMANDS = ("hot", "cold", "temp", "help")
 CALL_REASONS = ("help", "not_evacuated")
 STATUS_ONLINE = "online"
@@ -31,7 +32,7 @@ FIELDS = {
     topics.DOOR_RFID: {"ts": str, "card_id": str},
     topics.DOOR_SPEAKER_SAY: {"text": str},
     topics.DOOR_PIR_ENABLE: {"enabled": bool},
-    topics.DOOR_LED_CMD: {"mode": str},
+    topics.DOOR_LED_CMD: {"color": str, "mode": str},
     topics.ROOM_ENV: {"ts": str, "temp": float},
     topics.ROOM_VOICE: {"ts": str, "command": str},
     topics.ROOM_MIC_ENABLE: {"enabled": bool},
@@ -44,6 +45,7 @@ FIELDS = {
 
 # Fields whose value must be one of a fixed list
 ALLOWED_VALUES = {
+    (topics.DOOR_LED_CMD, "color"): LED_COLORS,
     (topics.DOOR_LED_CMD, "mode"): LED_MODES,
     (topics.ROOM_VOICE, "command"): VOICE_COMMANDS,
     (topics.ROOM_FAN_CMD, "speed"): FAN_SPEEDS,
@@ -62,7 +64,9 @@ WEB_ACTIONS = {
 
 # Delivery guarantee per topic: alerts must arrive exactly once (QoS 2)
 DEFAULT_QOS = 1
-QOS = {topics.ALERT_UNITS: 2, topics.ALERT_CALL: 2}
+# The subscription to every alert needs QoS 2 too: MQTT delivers with the lower
+# of the publish and subscribe QoS, so a QoS 1 subscription would lose the guarantee.
+QOS = {topics.ALERT_UNITS: 2, topics.ALERT_CALL: 2, topics.ALERT_ALL: 2}
 
 
 class InvalidMessage(ValueError):
