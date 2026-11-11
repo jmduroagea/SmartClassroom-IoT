@@ -26,7 +26,7 @@ cd "$REPO_DIR"
 case "${1:-}" in
   door)  exec "$PYTHON" door/door.py ;;
   room)  exec "$PYTHON" -m room.main ;;
-  brain) exec "$PYTHON" server/brain.py ;;
+  brain) exec "$PYTHON" -m server.brain.main ;;
   web)   cd server/web && exec node server.js ;;
   *)     echo "usage: $0 door|room|brain|web"; exit 2 ;;
 esac

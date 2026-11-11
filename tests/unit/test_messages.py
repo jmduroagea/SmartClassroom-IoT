@@ -32,6 +32,28 @@ def test_null_person_is_accepted_in_alert():
         topics.ALERT_UNITS, {"ts": TS, "emergency_id": "e1", "temp": 41.5, "person": None}
     )
 
+def test_alert_without_a_temperature_is_accepted():
+    # A simulated emergency before the first reading has no temperature
+    messages.validate(
+        topics.ALERT_UNITS, {"ts": TS, "emergency_id": "e1", "temp": None, "person": None}
+    )
+
+
+def test_alert_with_an_integer_temperature_is_accepted():
+    messages.validate(
+        topics.ALERT_UNITS, {"ts": TS, "emergency_id": "e1", "temp": 41, "person": None}
+    )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_alarm_on_and_off_are_accepted(enabled):
+    messages.validate(topics.DOOR_ALARM, {"enabled": enabled})
+
+
+@pytest.mark.parametrize("data", [{"enabled": "yes"}, {"enabled": 1}, {}])
+def test_wrong_alarm_message_is_rejected(data):
+    with pytest.raises(InvalidMessage):
+        messages.validate(topics.DOOR_ALARM, data)
 
 @pytest.mark.parametrize(
     "data",

@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 from pymongo.errors import PyMongoError
 from server.brain.adapters.fake_repository import FakeRepository
 from server.brain.adapters.mongo_repository import MongoRepository
@@ -16,7 +16,7 @@ class TestFakeRepository(unittest.TestCase):
 
     def test_logging_methods(self):
         repo = FakeRepository()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         repo.log_access("CARD_1", "in", "Gloria", now)
         repo.log_env(23.5, now)
@@ -41,7 +41,7 @@ class TestMongoRepositoryMock(unittest.TestCase):
         config.mongo_db = "smartroom"
 
         repo = MongoRepository(config)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Test log_access exact document fields (type, name, ts as datetime)
         repo.log_access("CARD_1", "in", "Gloria", now)
@@ -77,5 +77,5 @@ class TestMongoRepositoryMock(unittest.TestCase):
 
         # Should catch PyMongoError, log it, and never crash the brain (T12)
         with self.assertLogs("server.brain.adapters.mongo_repository", level="ERROR") as log:
-            repo.log_env(22.0, datetime.utcnow())
+            repo.log_env(22.0, datetime.now(timezone.utc))
             self.assertTrue(any("MongoDB error in log_env" in message for message in log.output))

@@ -14,6 +14,7 @@ DOOR_RFID = f"{PREFIX}/door/rfid"
 DOOR_SPEAKER_SAY = f"{PREFIX}/door/speaker/say"
 DOOR_PIR_ENABLE = f"{PREFIX}/door/pir/enable"
 DOOR_LED_CMD = f"{PREFIX}/door/led/cmd"
+DOOR_ALARM = f"{PREFIX}/door/alarm"
 
 # Room Pi -> brain
 ROOM_ENV = f"{PREFIX}/room/env"

@@ -16,13 +16,13 @@ class TestStateMachine(unittest.TestCase):
         actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
         self.assertEqual(self.sm.state, State.INSIDE)
         self.assertIn({"type": "say", "text": "Welcome, Gloria."}, actions)
-        self.assertIn({"type": "access", "access": "in", "card_id": "CARD_GLORIA"}, actions)
+        self.assertIn({"type": "access", "access": "in", "card_id": "CARD_GLORIA", "name": "Gloria"}, actions)
 
         # 2. Exit
         actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
         self.assertEqual(self.sm.state, State.IDLE)
         self.assertIn({"type": "say", "text": "Goodbye, Gloria."}, actions)
-        self.assertIn({"type": "access", "access": "out", "card_id": "CARD_GLORIA"}, actions)
+        self.assertIn({"type": "access", "access": "out", "card_id": "CARD_GLORIA", "name": "Gloria"}, actions)
 
         # 3. With temperature reading (rounded to 1 decimal)
         self.sm.handle_temperature(0.0, 22.56)
@@ -54,14 +54,14 @@ class TestStateMachine(unittest.TestCase):
         self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
         actions = self.sm.handle_card("CARD_JOSE", is_known=True, user_name="Jose")
         self.assertEqual(self.sm.state, State.INSIDE)
-        self.assertIn({"type": "occupied", "card_id": "CARD_JOSE"}, actions)
+        self.assertIn({"type": "access", "access": "occupied", "card_id": "CARD_JOSE", "name": "Jose"}, actions)
         self.assertIn({"type": "say", "text": "Room occupied."}, actions)
 
     def test_card_while_locked(self):
         self.sm.state = State.LOCKED
         actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
         self.assertEqual(self.sm.state, State.LOCKED)
-        self.assertIn({"type": "denied", "card_id": "CARD_GLORIA"}, actions)
+        self.assertIn({"type": "access", "access": "denied", "card_id": "CARD_GLORIA", "name": "Gloria"}, actions)
         self.assertFalse(any(a.get("type") == "say" for a in actions))
 
     def test_pir_starts_waiting_card_and_timers(self):
@@ -81,6 +81,24 @@ class TestStateMachine(unittest.TestCase):
         # Timeout back to IDLE
         self.clock.advance(30.0)
         self.assertEqual(self.sm.state, State.IDLE)
+
+    def test_unknown_card_is_logged_without_a_name(self):
+        actions = self.sm.handle_card("UNKNOWN", is_known=False)
+        self.assertIn({"type": "access", "access": "denied", "card_id": "UNKNOWN", "name": None}, actions)
+
+    def test_locking_and_unlocking_are_system_events(self):
+        for attempt in range(StateMachine.MAX_FAILED_ATTEMPTS - 1):
+            actions = self.sm.handle_card(f"UNKNOWN{attempt}", is_known=False)
+            self.assertFalse(any(a["type"] == "system_event" for a in actions))
+        actions = self.sm.handle_card("UNKNOWN_LAST", is_known=False)
+        self.assertIn({"type": "system_event", "event": "locked", "device": "door",
+                       "detail": "3 unknown cards"}, actions)
+        actions = self.sm.unlock()
+        self.assertIn({"type": "system_event", "event": "unlocked", "device": "web", "detail": ""}, actions)
+
+    def test_unlock_when_not_locked_does_nothing(self):
+        self.assertEqual(self.sm.unlock(), [])
+
     def test_fan_initialization(self):
         sm = StateMachine(clock=self.clock, emit=self.emit)
         self.assertEqual(sm.fan_speed, 0)

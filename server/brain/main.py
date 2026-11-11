@@ -1,52 +1,39 @@
-import json
-import os
-import paho.mqtt.client as mqtt
-from common.topics import DOOR_RFID, DOOR_SPEAKER_SAY
-from server.brain.core.state_machine import StateMachine
+"""The brain program, on the Server Pi. It only wires the parts together.
+
+    python -m server.brain.main
+
+Settings (broker, MongoDB) come from the environment: see .env.example.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+
+from common.clock import SystemClock
+from common.config import load_config
+from common.paho_bus import PahoBus
 from server.brain.adapters.mongo_repository import MongoRepository
+from server.brain.service import Brain
 
-def main():
-    sm = StateMachine()
-    repo = MongoRepository()
+CLIENT_ID = "brain"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-    def on_connect(client, userdata, flags, rc):
-        print(f"[Brain] Connected to MQTT broker with result code {rc}")
-        client.subscribe(DOOR_RFID)
 
-    def on_message(client, userdata, msg):
-        try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-            card_id = payload.get("card_id")
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+    config = load_config()
+    bus = PahoBus(config, CLIENT_ID)
+    brain = Brain(bus, SystemClock(), MongoRepository(config))
+    brain.start()
+    bus.start()
+    try:
+        threading.Event().wait()  # MQTT and the timers run in their own threads
+    except KeyboardInterrupt:
+        pass
+    finally:
+        bus.stop()
 
-            if not card_id:
-                return
-
-            user = repo.find_user_by_card(card_id)
-            user_name = user["name"] if user else None
-
-            actions = sm.process_card_scan(card_id, user_name)
-
-            for action in actions:
-                if action["type"] == "say":
-                    client.publish(DOOR_SPEAKER_SAY, json.dumps({"text": action["text"]}))
-                elif action["type"] == "log_access":
-                    repo.log_access(action["event_type"], action["card_id"], action["name"])
-                elif action["type"] == "log_system":
-                    repo.log_system(action["level"], action["msg"])
-
-        except Exception as e:
-            print(f"[Brain] Error processing message: {e}")
-
-    client = mqtt.Client()
-    client.on_connect = on_connect
-    client.on_message = on_message
-
-    broker_host = os.getenv("MQTT_HOST", "localhost")
-    broker_port = int(os.getenv("MQTT_PORT", 1883))
-
-    client.connect_async(broker_host, broker_port, 60)
-    print(f"[Brain] Server started, connecting asynchronously to {broker_host}:{broker_port}...")
-    client.loop_forever()
 
 if __name__ == "__main__":
     main()
