@@ -10,13 +10,17 @@ x-python: &python
 
 services:
   emergency_center:
-    build:
-      context: .
-      dockerfile: emergency_center/Dockerfile
-    container_name: smart_emergency_center
+    <<: *python
+    command: python -m emergency_center.main
+    volumes:
+      - ./emergency_center:/app/emergency_center:ro
+      - ./common:/app/common:ro
+    environment:
+      MQTT_HOST: broker
     networks: [iot]
     depends_on:
       broker: { condition: service_healthy }
+    restart: on-failure
 
   broker:
     image: eclipse-mosquitto:2.0.11            # same version as the server Pi
