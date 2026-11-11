@@ -45,9 +45,10 @@ services:
 
   brain:
     <<: *python
-    command: python server/brain.py            # switch to the new brain when it is merged
+    command: python -m server.brain.main
     volumes:
-      - ./server/brain.py:/app/server/brain.py:ro
+      - ./server/__init__.py:/app/server/__init__.py:ro
+      - ./server/brain:/app/server/brain:ro
       - ./common:/app/common:ro
     environment:
       MQTT_HOST: broker

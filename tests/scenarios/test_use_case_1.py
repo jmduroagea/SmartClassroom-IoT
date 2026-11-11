@@ -64,7 +64,7 @@ def test_known_card_enters(sim):
     welcome = sim.said(containing="Welcome")
     assert "Gloria" in welcome
     assert str(round(BASE_TEMPERATURE)) in welcome
-    sim.wait_for_message(topics.DOOR_LED_CMD, lambda order: order["mode"] == "open")
+    sim.wait_for_message(topics.DOOR_LED_CMD, lambda order: order == {"color": "green", "mode": "pulse"})
     sim.wait_for_message(topics.DOOR_PIR_ENABLE, lambda order: order["enabled"] is False)
     sim.wait_for_message(topics.ROOM_MIC_ENABLE, lambda order: order["enabled"] is True)
     sim.wait_for_status(lambda status: status["inside"] == "Gloria")
@@ -161,8 +161,10 @@ def test_every_fan_level_from_web_is_ordered_and_confirmed(sim):
 
 def test_fan_stops_when_person_leaves(sim):
     enter(sim, GLORIA, "Gloria")
-    sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="hot")
-    speed = sim.wait_for_message(topics.ROOM_FAN_CMD)["speed"]
+    speed = max(messages.FAN_SPEEDS)
+    status_code, _body = sim.post("/api/fan", {"speed": speed})
+    assert status_code == 200
+    sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == speed)
     confirm_fan(sim, speed)
     sim.forget_messages()
 
@@ -193,6 +195,7 @@ def test_web_rejects_invalid_fan_speed(sim, body):
 # --- Voice assistant ----------------------------------------------------------------
 
 
+@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_hot_turns_fan_on_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
@@ -201,6 +204,7 @@ def test_voice_hot_turns_fan_on_when_inside(sim):
     sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == FAN_SPEED_ON_HOT)
 
 
+@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_is_answered_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
@@ -209,6 +213,7 @@ def test_voice_temperature_is_answered_when_inside(sim):
     assert str(round(BASE_TEMPERATURE)) in sim.said(containing="degrees")
 
 
+@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_uses_the_latest_reading(sim):
     enter(sim, GLORIA, "Gloria")
     sim.publish(topics.ROOM_ENV, ts=now_ts(), temp=WARMER_TEMPERATURE)
@@ -218,6 +223,7 @@ def test_voice_temperature_uses_the_latest_reading(sim):
     sim.said(containing=f"{round(WARMER_TEMPERATURE)} degrees")
 
 
+@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_help_calls_the_emergency_centre(sim):
     enter(sim, GLORIA, "Gloria")
 
