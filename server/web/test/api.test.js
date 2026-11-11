@@ -7,17 +7,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 
-const { createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT } = require('../app');
+const {
+  createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
+} = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
 const PASSWORD = 'test-password';
+
+const NOW = new Date('2026-11-10T12:00:00Z');
 
 function setup({ connected = true, collections = {}, dbDown = false } = {}) {
   const broker = new FakeBroker({ connected });
   const getDb = dbDown
     ? async () => { throw new Error('database not reachable'); }
     : async () => fakeDb(collections);
-  const app = createApp({ broker, getDb, webPassword: PASSWORD });
+  const app = createApp({ broker, getDb, webPassword: PASSWORD, now: () => NOW });
   return { app, broker };
 }
 
@@ -394,5 +398,65 @@ test(`GET /api/emergencies returns only the ${HISTORY_LIMIT} newest`, async () =
 test('GET /api/emergencies with the database down returns 500', async () => {
   const { app } = setup({ dbDown: true });
   const res = await request(app).get('/api/emergencies');
+  assert.equal(res.status, 500);
+});
+
+// --- Temperature chart (#29) ------------------------------------------------------
+
+// A reading `minutes` before NOW (plus some seconds inside that minute).
+const reading = (minutes, temp, seconds = 0) => ({
+  ts: new Date(NOW.getTime() - minutes * 60000 + seconds * 1000),
+  temp,
+});
+
+test('GET /api/env returns one average per minute, oldest first', async () => {
+  const { app } = setup({
+    collections: {
+      env: [
+        reading(5, 22.0, 10), reading(5, 23.0, 20), reading(5, 24.0, 30),
+        reading(3, 25.04),
+      ],
+    },
+  });
+  const res = await request(app).get('/api/env?hours=1');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, [
+    { ts: '2026-11-10T11:55:00Z', temp: 23 },
+    { ts: '2026-11-10T11:57:00Z', temp: 25 },
+  ]);
+});
+
+test('GET /api/env leaves out readings older than the period', async () => {
+  const { app } = setup({ collections: { env: [reading(61, 30), reading(59, 20)] } });
+  const res = await request(app).get('/api/env?hours=1');
+  assert.deepEqual(res.body.map((p) => p.temp), [20]);
+});
+
+test(`GET /api/env without hours covers the default ${DEFAULT_HOURS} hours`, async () => {
+  const { app } = setup({
+    collections: { env: [reading(DEFAULT_HOURS * 60 + 1, 30), reading(DEFAULT_HOURS * 60 - 1, 20)] },
+  });
+  const res = await request(app).get('/api/env');
+  assert.deepEqual(res.body.map((p) => p.temp), [20]);
+});
+
+test('GET /api/env with no readings returns an empty list', async () => {
+  const { app } = setup({});
+  const res = await request(app).get('/api/env?hours=6');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, []);
+});
+
+for (const hours of ['0', String(MAX_HOURS + 1), '-1', '1.5', 'abc', '']) {
+  test(`GET /api/env?hours=${hours} returns 400`, async () => {
+    const { app } = setup({});
+    const res = await request(app).get(`/api/env?hours=${hours}`);
+    assert.equal(res.status, 400);
+  });
+}
+
+test('GET /api/env with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get('/api/env?hours=1');
   assert.equal(res.status, 500);
 });

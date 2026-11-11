@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>SmartClassroom</title>
   <script src="/lib/angular.min.js"></script>
+  <script src="/lib/chartjs/chart.umd.min.js"></script>
   <script src="/app.js"></script>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
@@ -15,6 +16,7 @@
     .demo { border-style: dashed; }
     .in-progress { color: #d33; font-weight: bold; }
     .calls { margin: 0; padding-left: 1rem; }
+    .chart-box { position: relative; height: 260px; }
     .stale { color: #888; }
     .error { color: #d33; }
     button { margin-right: .5rem; padding: .4rem .9rem; }
@@ -66,6 +68,15 @@
             ng-disabled="status.state === 'emergency'">
       {{ s === 0 ? 'Off' : 'Speed ' + s }}
     </button>
+  </div>
+
+  <div class="card">
+    <h2>Temperature</h2>
+    <button ng-repeat="h in chartPeriods" ng-class="{ active: chartHours === h }" ng-click="setChartHours(h)">
+      {{ h }} h
+    </button>
+    <p ng-if="chartEmpty"><i>No readings in this period.</i></p>
+    <div class="chart-box"><canvas id="tempChart"></canvas></div>
   </div>
 
   <div class="card">
