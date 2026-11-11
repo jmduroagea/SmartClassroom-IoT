@@ -10,6 +10,7 @@ const request = require('supertest');
 const {
   createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
   MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
+  LAST_UNKNOWN_MINUTES,
 } = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
@@ -657,5 +658,58 @@ for (const limit of ['0', String(MAX_ACCESS_LIMIT + 1), '-5', '2.5', 'abc', ''])
 test('GET /api/access with the database down returns 500', async () => {
   const { app } = setup({ dbDown: true });
   const res = await request(app).get('/api/access');
+  assert.equal(res.status, 500);
+});
+
+// --- Last rejected card (#32) -----------------------------------------------------
+
+const minutesAgo = (minutes) => new Date(NOW.getTime() - minutes * 60000);
+const rejected = (cardId, minutes, name = null) => ({ type: 'denied', card_id: cardId, name, ts: minutesAgo(minutes) });
+
+async function lastUnknown(collections) {
+  const { app } = setup({ collections });
+  const res = await request(app).get('/api/access/last-unknown');
+  assert.equal(res.status, 200);
+  return res.body;
+}
+
+test('GET /api/access/last-unknown gives the last rejected unknown card', async () => {
+  const body = await lastUnknown({ access_log: [rejected('OLD1', 5), rejected('NEW2', 1)] });
+  assert.deepEqual(body, { cardId: 'NEW2', ts: minutesAgo(1).toISOString() });
+});
+
+const NONE = { cardId: null, ts: null };
+
+test('GET /api/access/last-unknown gives no card when nothing was rejected', async () => {
+  assert.deepEqual(await lastUnknown({}), NONE);
+});
+
+test(`GET /api/access/last-unknown ignores cards rejected more than ${LAST_UNKNOWN_MINUTES} minutes ago`, async () => {
+  assert.deepEqual(await lastUnknown({ access_log: [rejected('OLD1', LAST_UNKNOWN_MINUTES + 1)] }), NONE);
+});
+
+test('GET /api/access/last-unknown ignores known cards rejected while locked', async () => {
+  const body = await lastUnknown({ access_log: [rejected('UNK1', 3), rejected('A1', 1, 'Gloria')] });
+  assert.equal(body.cardId, 'UNK1');
+});
+
+test('GET /api/access/last-unknown ignores cards registered since', async () => {
+  const body = await lastUnknown({
+    access_log: [rejected('UNK1', 3), rejected('UNK2', 1)],
+    users: [{ card_id: 'UNK2', name: 'Ignacio' }],
+  });
+  assert.equal(body.cardId, 'UNK1');
+});
+
+test('GET /api/access/last-unknown ignores other access types', async () => {
+  const body = await lastUnknown({
+    access_log: [{ type: 'occupied', card_id: 'X1', name: null, ts: minutesAgo(1) }],
+  });
+  assert.deepEqual(body, NONE);
+});
+
+test('GET /api/access/last-unknown with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get('/api/access/last-unknown');
   assert.equal(res.status, 500);
 });

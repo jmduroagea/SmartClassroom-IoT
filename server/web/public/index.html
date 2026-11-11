@@ -129,6 +129,11 @@
       <tr ng-repeat="u in users"><td>{{ u.card_id }}</td><td>{{ u.name }}</td></tr>
     </table>
     <h3>Add a card</h3>
+    <p ng-if="lastUnknown.cardId">
+      <button ng-click="useLastUnknown()">
+        Use last rejected card: {{ lastUnknown.cardId }} ({{ lastUnknown.ts | date:'HH:mm' }})
+      </button>
+    </p>
     <input ng-model="newCard.card_id" placeholder="Card id">
     <input ng-model="newCard.name" placeholder="Name">
     <button ng-click="addCard()">Add</button>
