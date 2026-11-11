@@ -4,7 +4,7 @@ from server.brain.ports.repository import RepositoryPort
 
 class FakeRepository(RepositoryPort):
     """In-memory repository test double implementing RepositoryPort without hardcoded users."""
-    
+
     def __init__(self, initial_users: List[Dict[str, Any]] = None):
         self.users: List[Dict[str, Any]] = initial_users or []
         self.access_logs: List[Dict[str, Any]] = []

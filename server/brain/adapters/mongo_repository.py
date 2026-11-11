@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class MongoRepository(RepositoryPort):
     """Production MongoDB repository adapter implementing RepositoryPort."""
-    
+
     def __init__(self, config):
         self.client = MongoClient(config.mongo_uri, serverSelectionTimeoutMS=2000)
         self.db = self.client[config.mongo_db]
