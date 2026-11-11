@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 
-const { createApp, WEB_CMD_TOPIC, WEB_CMD_QOS } = require('../app');
+const { createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT } = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
 const PASSWORD = 'test-password';
@@ -256,7 +256,7 @@ test('GET /api/status: returns the time of the temperature reading', async () =>
 const EMERGENCY = {
   started_at: T(5),
   ended_at: null,
-  trigger: 'temperature',
+  trigger: 'rate',
   trigger_temp: 40.5,
   person: { card_id: 'A1B2', name: 'Gloria' },
   evacuated_at: null,
@@ -270,7 +270,7 @@ test('GET /api/status: an open emergency gives state emergency and its summary',
   assert.equal(body.state, 'emergency');
   assert.deepEqual(body.emergency, {
     startedAt: T(5),
-    trigger: 'temperature',
+    trigger: 'rate',
     triggerTemp: 40.5,
     person: 'Gloria',
     evacuated: false,
@@ -319,4 +319,80 @@ test('GET /api/status with the database down returns 500 and does not crash', as
   const res = await request(app).get('/api/status');
   assert.equal(res.status, 500);
   assert.match(res.body.error, /not reachable/);
+});
+
+// --- Emergency history (#27) ---------------------------------------------------
+
+test('GET /api/emergencies with no emergencies returns an empty list', async () => {
+  const { app } = setup({ collections: {} });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, []);
+});
+
+test('GET /api/emergencies returns each emergency without its readings', async () => {
+  const { app } = setup({
+    collections: {
+      emergencies: [{
+        ...EMERGENCY,
+        ended_at: T(9),
+        evacuated_at: T(7),
+        not_evacuated_alert: true,
+        calls: [{ ts: T(6), reason: 'help' }, { ts: T(8), reason: 'not_evacuated' }],
+      }],
+    },
+  });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, [{
+    startedAt: T(5),
+    endedAt: T(9),
+    inProgress: false,
+    trigger: 'rate',
+    triggerTemp: 40.5,
+    person: 'Gloria',
+    evacuatedAt: T(7),
+    notEvacuated: true,
+    calls: [{ ts: T(6), reason: 'help' }, { ts: T(8), reason: 'not_evacuated' }],
+  }]);
+});
+
+test('GET /api/emergencies shows the current emergency first, marked in progress', async () => {
+  const { app } = setup({
+    collections: {
+      emergencies: [
+        { ...EMERGENCY, started_at: T(1), ended_at: T(2) },
+        { ...EMERGENCY, started_at: T(5), ended_at: null },
+      ],
+    },
+  });
+  const res = await request(app).get('/api/emergencies');
+  assert.deepEqual(res.body.map((e) => [e.startedAt, e.inProgress]), [[T(5), true], [T(1), false]]);
+});
+
+test('GET /api/emergencies with nobody inside gives person null and no calls', async () => {
+  const { app } = setup({
+    collections: { emergencies: [{ ...EMERGENCY, person: null, calls: undefined, ended_at: T(9) }] },
+  });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.body[0].person, null);
+  assert.deepEqual(res.body[0].calls, []);
+});
+
+test(`GET /api/emergencies returns only the ${HISTORY_LIMIT} newest`, async () => {
+  const many = Array.from({ length: HISTORY_LIMIT + 5 }, (_, i) => ({
+    ...EMERGENCY,
+    started_at: `2026-11-10T${String(i).padStart(2, '0')}:00:00Z`,
+    ended_at: `2026-11-10T${String(i).padStart(2, '0')}:30:00Z`,
+  }));
+  const { app } = setup({ collections: { emergencies: many } });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.body.length, HISTORY_LIMIT);
+  assert.equal(res.body[0].startedAt, many[many.length - 1].started_at);
+});
+
+test('GET /api/emergencies with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.status, 500);
 });
