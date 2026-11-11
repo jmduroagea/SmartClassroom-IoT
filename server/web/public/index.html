@@ -9,6 +9,8 @@
     body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     .locked { border-color: #d33; background: #fdeeee; }
+    .emergency { border: 2px solid #d33; background: #d33; color: #fff; padding: .8rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .stale { color: #888; }
     .error { color: #d33; }
     button { margin-right: .5rem; padding: .4rem .9rem; }
     button.active { font-weight: bold; }
@@ -20,12 +22,23 @@
   <h1>SmartClassroom</h1>
   <p class="error" ng-if="error">{{ error }}</p>
 
-  <div class="card" ng-class="{ locked: status.locked }">
+  <div class="emergency" ng-if="status.state === 'emergency'">
+    <b>⚠ EMERGENCY</b> since {{ status.emergency.startedAt | date:'HH:mm:ss' }}
+    <span ng-if="status.emergency.evacuated"> · person evacuated</span>
+    <span ng-if="status.emergency.helpRequested"> · help requested</span>
+    <span ng-if="status.emergency.notEvacuated"> · NOT evacuated</span>
+  </div>
+
+  <div class="card" ng-class="{ locked: status.state === 'locked' }">
     <h2>Room status</h2>
+    <p><b>State:</b> {{ status.state }}</p>
     <p><b>Inside:</b> {{ status.inside || 'Room empty' }}</p>
-    <p><b>Temperature:</b> {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading yet' }}</p>
+    <p ng-class="{ stale: temperatureStale() }"><b>Temperature:</b>
+      {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading yet' }}
+      <span ng-if="temperatureStale()">⚠ old reading ({{ status.temperatureTs | date:'HH:mm:ss' }})</span>
+    </p>
     <p><b>Devices:</b> door {{ status.devices.door }}, room {{ status.devices.room }}</p>
-    <p ng-if="status.locked"><b>System locked.</b> <button ng-click="unlock()">Unlock</button></p>
+    <p ng-if="status.state === 'locked'"><b>System locked.</b> <button ng-click="unlock()">Unlock</button></p>
   </div>
 
   <div class="card">
