@@ -101,7 +101,7 @@ def test_three_unknown_cards_lock_until_unlocked_from_web(sim):
     for _ in range(CARDS_TO_LOCK):
         scan(sim, UNKNOWN_CARD)
     sim.said(containing="locked")
-    sim.wait_for_status(lambda status: status["locked"])
+    sim.wait_for_status(lambda status: status["state"] == "locked")
 
     # While locked, even a known card stays outside.
     sim.forget_messages()
@@ -111,7 +111,7 @@ def test_three_unknown_cards_lock_until_unlocked_from_web(sim):
 
     status_code, _body = sim.post("/api/unlock")
     assert status_code == 200
-    sim.wait_for_status(lambda status: not status["locked"])
+    sim.wait_for_status(lambda status: status["state"] != "locked")
 
     scan(sim, GLORIA)
     sim.wait_for_status(lambda status: status["inside"] == "Gloria")
