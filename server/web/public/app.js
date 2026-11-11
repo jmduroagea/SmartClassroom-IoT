@@ -117,7 +117,10 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     }
     chart = new Chart(document.getElementById('tempChart'), {
       type: 'line',
-      data: { labels: labels, datasets: [{ label: '°C', data: temps, borderColor: '#d33', pointRadius: 0, tension: 0.2 }] },
+      data: { labels: labels, datasets: [{
+        label: '°C', data: temps, borderColor: '#1E5FB3', backgroundColor: 'rgba(30, 95, 179, 0.08)',
+        fill: true, borderWidth: 3, pointRadius: 0, tension: 0.3,
+      }] },
       options: {
         animation: false,
         maintainAspectRatio: false,
