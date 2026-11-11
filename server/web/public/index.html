@@ -9,7 +9,10 @@
     body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     .locked { border-color: #d33; background: #fdeeee; }
-    .emergency { border: 2px solid #d33; background: #d33; color: #fff; padding: .8rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .emergency { background: #d33; color: #fff; padding: 1rem 1.2rem; border-radius: 8px; margin-bottom: 1rem; }
+    .emergency h2 { margin-top: 0; }
+    .emergency .alarm { background: #fff; color: #d33; font-weight: bold; padding: .2rem .5rem; border-radius: 4px; }
+    .demo { border-style: dashed; }
     .stale { color: #888; }
     .error { color: #d33; }
     button { margin-right: .5rem; padding: .4rem .9rem; }
@@ -23,10 +26,22 @@
   <p class="error" ng-if="error">{{ error }}</p>
 
   <div class="emergency" ng-if="status.state === 'emergency'">
-    <b>⚠ EMERGENCY</b> since {{ status.emergency.startedAt | date:'HH:mm:ss' }}
-    <span ng-if="status.emergency.evacuated"> · person evacuated</span>
-    <span ng-if="status.emergency.helpRequested"> · help requested</span>
-    <span ng-if="status.emergency.notEvacuated"> · NOT evacuated</span>
+    <h2>⚠ EMERGENCY</h2>
+    <p>Started at {{ status.emergency.startedAt | date:'HH:mm:ss' }}
+      ({{ status.emergency.trigger === 'simulated' ? 'simulated' : 'temperature rise' }})</p>
+    <p><b>Temperature now:</b>
+      {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading' }}</p>
+    <p ng-if="status.emergency.person"><b>Person inside:</b> {{ status.emergency.person }} —
+      <span ng-if="status.emergency.evacuated">evacuated at {{ status.emergency.evacuatedAt | date:'HH:mm:ss' }}</span>
+      <span ng-if="!status.emergency.evacuated">not evacuated yet</span>
+    </p>
+    <p ng-if="!status.emergency.person">Nobody was inside.</p>
+    <p ng-if="status.emergency.notEvacuated"><span class="alarm">Person not evacuated</span></p>
+    <p ng-if="status.emergency.helpRequested"><span class="alarm">Help requested</span></p>
+    <form ng-submit="endEmergency()">
+      <input type="password" ng-model="password.end" placeholder="Password" autocomplete="current-password">
+      <button type="submit" ng-disabled="!password.end">End emergency</button>
+    </form>
   </div>
 
   <div class="card" ng-class="{ locked: status.state === 'locked' }">
@@ -59,6 +74,15 @@
     <input ng-model="newCard.card_id" placeholder="Card id">
     <input ng-model="newCard.name" placeholder="Name">
     <button ng-click="addCard()">Add</button>
+  </div>
+
+  <div class="card demo">
+    <h2>Demo / tests</h2>
+    <p>Starts an emergency without heating the sensor.</p>
+    <form ng-submit="simulateEmergency()">
+      <input type="password" ng-model="password.simulate" placeholder="Password" autocomplete="current-password">
+      <button type="submit" ng-disabled="!password.simulate">Simulate emergency</button>
+    </form>
   </div>
 </body>
 </html>

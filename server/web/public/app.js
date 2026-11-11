@@ -37,6 +37,26 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     $http.post('/api/unlock', {}).then(refresh, fail);
   };
 
+  // Passwords typed for the emergency buttons. They are only sent to Express,
+  // which checks them; they are cleared after a correct one (decision 3A).
+  $scope.password = { simulate: '', end: '' };
+
+  function emergencyCommand(route, field) {
+    $http.post('/api/emergency/' + route, { password: $scope.password[field] }).then(function () {
+      $scope.password[field] = '';
+      $scope.error = null;
+      refresh();
+    }, fail);
+  }
+
+  $scope.simulateEmergency = function () {
+    emergencyCommand('simulate', 'simulate');
+  };
+
+  $scope.endEmergency = function () {
+    emergencyCommand('end', 'end');
+  };
+
   $scope.addCard = function () {
     $http.post('/api/users', $scope.newCard).then(function () {
       $scope.newCard = {};
