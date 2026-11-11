@@ -99,20 +99,12 @@ test('GET /api/users returns the users from the database', async () => {
   assert.deepEqual(res.body, users);
 });
 
-// --- Unlock ------------------------------------------------------------------
-
-test('POST /api/unlock publishes unlock', async () => {
-  const { app, broker } = setup();
-  const res = await request(app).post('/api/unlock');
-  assert.equal(res.status, 200);
-  assert.deepEqual(broker.published[0].message, { action: 'unlock' });
-});
-
-// --- Emergency with password (T20) ---------------------------------------------
+// --- Commands with password: emergencies (T20) and unlock (#31) -------------------
 
 for (const [route, action] of [
   ['/api/emergency/simulate', 'simulate_emergency'],
   ['/api/emergency/end', 'end_emergency'],
+  ['/api/unlock', 'unlock'],
 ]) {
   test(`POST ${route} with the right password publishes ${action}`, async () => {
     const { app, broker } = setup();
@@ -136,7 +128,7 @@ for (const [route, action] of [
 for (const [route, body] of [
   ['/api/fan', { speed: 1 }],
   ['/api/users', { card_id: '0F00A1B2C3', name: 'Gloria' }],
-  ['/api/unlock', {}],
+  ['/api/unlock', { password: PASSWORD }],
   ['/api/emergency/simulate', { password: PASSWORD }],
 ]) {
   test(`POST ${route} with the broker disconnected returns 503`, async () => {

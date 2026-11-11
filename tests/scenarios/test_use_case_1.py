@@ -19,6 +19,7 @@ FAN_SPEED_ON_HOT = 2
 FAN_OFF = 0
 WARMER_TEMPERATURE = 25.0
 REMINDER_TIMEOUT = 15  # the prompt comes 3 s after motion, the reminder 5 s later
+WEB_PASSWORD = "simulation"  # the default in compose.yaml
 
 
 def scan(sim, card_id):
@@ -109,7 +110,7 @@ def test_three_unknown_cards_lock_until_unlocked_from_web(sim):
     sim.assert_nothing_on(topics.DOOR_SPEAKER_SAY)
     assert sim.status()["inside"] is None
 
-    status_code, _body = sim.post("/api/unlock")
+    status_code, _body = sim.post("/api/unlock", {"password": WEB_PASSWORD})
     assert status_code == 200
     sim.wait_for_status(lambda status: status["state"] != "locked")
 

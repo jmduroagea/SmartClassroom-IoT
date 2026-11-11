@@ -225,7 +225,7 @@ function systemState(emergency, lockEvent) {
  * @param {object} deps
  * @param {{connected: boolean, publish: Function}} deps.broker  MQTT client (or a fake)
  * @param {() => Promise<object>} deps.getDb  returns the MongoDB database (or a fake)
- * @param {string} deps.webPassword  password for emergency commands
+ * @param {string} deps.webPassword  password for the emergency commands and for unlocking
  * @param {() => Date} [deps.now]  current time (a fixed one in the tests)
  */
 function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
@@ -395,7 +395,11 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
     return sendCommand(res, { action: 'fan', speed });
   });
 
-  app.post('/api/unlock', (req, res) => sendCommand(res, { action: 'unlock' }));
+  app.post('/api/unlock', (req, res) => {
+    if (checkPassword(req, res)) {
+      sendCommand(res, { action: 'unlock' });
+    }
+  });
 
   app.post('/api/emergency/simulate', (req, res) => {
     if (checkPassword(req, res)) {
