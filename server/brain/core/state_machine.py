@@ -85,7 +85,7 @@ class StateMachine:
 
         if self.state == State.LOCKED:
             actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
-            actions.append({"type": "denied", "card_id": card_id})
+            actions.append({"type": "access", "access": "denied", "card_id": card_id, "name": user_name})
             return actions
 
         self._cancel_timer()
@@ -93,7 +93,11 @@ class StateMachine:
         if not is_known:
             self.failed_attempts += 1
             actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
-            actions.append({"type": "denied", "card_id": card_id})
+            actions.append({"type": "access", "access": "denied", "card_id": card_id, "name": None})
+            actions.append({
+                    "type": "system_event", "event": "locked", "device": "door",
+                    "detail": f"{self.failed_attempts} unknown cards",
+                })
             actions.append({"type": "say", "text": "Card not recognized."})
 
             if self.failed_attempts >= self.MAX_FAILED_ATTEMPTS:
@@ -118,7 +122,7 @@ class StateMachine:
             else:
                 actions.append({"type": "say", "text": f"Welcome, {name_str}."})
 
-            actions.append({"type": "access", "access": "in", "card_id": card_id})
+            actions.append({"type": "access", "access": "in", "card_id": card_id, "name": user_name})
             actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
             actions.append({"type": "set_pir", "enabled": False})
             actions.append({"type": "set_mic", "enabled": True})
@@ -130,14 +134,14 @@ class StateMachine:
                 self.current_user_name = None
                 name_str = user_name or "User"
                 actions.append({"type": "say", "text": f"Goodbye, {name_str}."})
-                actions.append({"type": "access", "access": "out", "card_id": card_id})
+                actions.append({"type": "access", "access": "out", "card_id": card_id, "name": user_name})
                 actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
                 actions.append({"type": "set_fan", "speed": 0})
                 actions.append({"type": "set_mic", "enabled": False})
                 actions.append({"type": "set_pir", "enabled": True})
             else:
                 actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
-                actions.append({"type": "occupied", "card_id": card_id})
+                actions.append({"type": "access", "access": "occupied", "card_id": card_id, "name": user_name})
                 actions.append({"type": "say", "text": "Room occupied."})
 
         return actions
@@ -149,6 +153,7 @@ class StateMachine:
             self.state = State.IDLE
             self.failed_attempts = 0
             actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
+            actions.append({"type": "system_event", "event": "unlocked", "device": "web", "detail": ""})
         return actions
 
     def handle_emergency(self, trigger: str, temp: Optional[float] = None) -> list:
