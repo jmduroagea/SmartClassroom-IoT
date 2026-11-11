@@ -14,6 +14,10 @@ const path = require('path');
 const express = require('express');
 
 const WEB_CMD_TOPIC = 'glo/web/cmd';
+// Ways of leaving the room (specification v4): a normal exit, an evacuation,
+// or the brain closing the exit when an emergency ends without evacuation.
+const EXIT_TYPES = ['out', 'evacuated', 'emergency_end'];
+const HELP_REASON = 'help';
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -38,8 +42,38 @@ function isNonEmptyText(value) {
 }
 
 // The last document of a collection that matches a filter.
-function last(db, collection, filter = {}) {
-  return db.collection(collection).find(filter).sort({ ts: -1 }).limit(1).next();
+function last(db, collection, filter = {}, timeField = 'ts') {
+  return db.collection(collection).find(filter).sort({ [timeField]: -1 }).limit(1).next();
+}
+
+// What the web needs to know about the current emergency, without the
+// hundreds of readings stored in the record (they are for the history).
+function summarizeEmergency(doc) {
+  if (!doc) {
+    return null;
+  }
+  const calls = doc.calls || [];
+  return {
+    startedAt: doc.started_at,
+    trigger: doc.trigger,
+    triggerTemp: doc.trigger_temp,
+    person: doc.person ? doc.person.name : null,
+    evacuated: Boolean(doc.evacuated_at),
+    evacuatedAt: doc.evacuated_at || null,
+    notEvacuated: Boolean(doc.not_evacuated_alert),
+    helpRequested: calls.some((call) => call.reason === HELP_REASON),
+  };
+}
+
+// The emergency wins over the lock: an emergency lifts the lock (specification v4).
+function systemState(emergency, lockEvent) {
+  if (emergency) {
+    return 'emergency';
+  }
+  if (lockEvent && lockEvent.event === 'locked') {
+    return 'locked';
+  }
+  return 'normal';
 }
 
 /**
@@ -74,21 +108,25 @@ function createApp({ broker, getDb, webPassword }) {
   app.get('/api/status', async (req, res) => {
     try {
       const db = await getDb();
-      const [access, env, fan, lockEvent, door, room] = await Promise.all([
-        last(db, 'access_log', { type: { $in: ['in', 'out'] } }),
+      const [access, env, fan, lockEvent, door, room, emergencyDoc] = await Promise.all([
+        // The person inside is the last 'in' without a later exit of any kind.
+        last(db, 'access_log', { type: { $in: ['in', ...EXIT_TYPES] } }),
         last(db, 'env'),
         last(db, 'fan_log'),
         last(db, 'system_log', { event: { $in: ['locked', 'unlocked'] } }),
         last(db, 'system_log', { device: 'door', event: { $in: ['online', 'offline'] } }),
         last(db, 'system_log', { device: 'room', event: { $in: ['online', 'offline'] } }),
+        last(db, 'emergencies', { ended_at: null }, 'started_at'),
       ]);
+      const emergency = summarizeEmergency(emergencyDoc);
       res.json({
+        state: systemState(emergency, lockEvent),
         inside: access && access.type === 'in' ? access.name : null,
         temperature: env ? env.temp : null,
         temperatureTs: env ? env.ts : null,
         fanSpeed: fan ? fan.speed : 0,
-        locked: Boolean(lockEvent) && lockEvent.event === 'locked',
         devices: { door: door ? door.event : 'unknown', room: room ? room.event : 'unknown' },
+        emergency,
       });
     } catch (err) {
       res.status(SERVER_ERROR).json({ error: err.message });

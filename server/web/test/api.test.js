@@ -158,6 +158,162 @@ test('GET /api/status reads who is inside, temperature and fan from the database
   assert.equal(res.body.fanSpeed, 2);
 });
 
+async function status(collections) {
+  const { app } = setup({ collections });
+  const res = await request(app).get('/api/status');
+  assert.equal(res.status, 200);
+  return res.body;
+}
+
+const T = (minute) => `2026-11-10T09:${String(minute).padStart(2, '0')}:00Z`;
+
+test('GET /api/status: nobody inside when the database is empty', async () => {
+  const body = await status({});
+  assert.equal(body.inside, null);
+  assert.equal(body.state, 'normal');
+  assert.equal(body.emergency, null);
+  assert.deepEqual(body.devices, { door: 'unknown', room: 'unknown' });
+});
+
+for (const exit of ['out', 'evacuated', 'emergency_end']) {
+  test(`GET /api/status: nobody inside after an '${exit}' that follows the 'in'`, async () => {
+    const body = await status({
+      access_log: [
+        { type: 'in', name: 'Gloria', ts: T(1) },
+        { type: exit, name: 'Gloria', ts: T(2) },
+      ],
+    });
+    assert.equal(body.inside, null);
+  });
+}
+
+for (const other of ['denied', 'occupied']) {
+  test(`GET /api/status: a later '${other}' entry does not change who is inside`, async () => {
+    const body = await status({
+      access_log: [
+        { type: 'in', name: 'Gloria', ts: T(1) },
+        { type: other, name: 'Ignacio', ts: T(2) },
+      ],
+    });
+    assert.equal(body.inside, 'Gloria');
+  });
+}
+
+test('GET /api/status: the newest entry wins, whatever the order in the database', async () => {
+  const body = await status({
+    access_log: [
+      { type: 'in', name: 'José María', ts: T(3) },
+      { type: 'out', name: 'Gloria', ts: T(2) },
+      { type: 'in', name: 'Gloria', ts: T(1) },
+    ],
+  });
+  assert.equal(body.inside, 'José María');
+});
+
+test('GET /api/status: state is locked after a locked event', async () => {
+  const body = await status({ system_log: [{ event: 'locked', ts: T(1) }] });
+  assert.equal(body.state, 'locked');
+});
+
+test('GET /api/status: state is normal again after unlocked', async () => {
+  const body = await status({
+    system_log: [
+      { event: 'locked', ts: T(1) },
+      { event: 'unlocked', ts: T(2) },
+    ],
+  });
+  assert.equal(body.state, 'normal');
+});
+
+test('GET /api/status: device events do not hide the lock', async () => {
+  const body = await status({
+    system_log: [
+      { event: 'locked', ts: T(1) },
+      { device: 'door', event: 'online', ts: T(2) },
+    ],
+  });
+  assert.equal(body.state, 'locked');
+  assert.equal(body.devices.door, 'online');
+});
+
+test('GET /api/status: shows each Pi online or offline from its last event', async () => {
+  const body = await status({
+    system_log: [
+      { device: 'door', event: 'online', ts: T(1) },
+      { device: 'door', event: 'offline', ts: T(2) },
+      { device: 'room', event: 'online', ts: T(3) },
+    ],
+  });
+  assert.deepEqual(body.devices, { door: 'offline', room: 'online' });
+});
+
+test('GET /api/status: returns the time of the temperature reading', async () => {
+  const body = await status({ env: [{ temp: 21, ts: T(1) }, { temp: 23, ts: T(2) }] });
+  assert.equal(body.temperature, 23);
+  assert.equal(body.temperatureTs, T(2));
+});
+
+const EMERGENCY = {
+  started_at: T(5),
+  ended_at: null,
+  trigger: 'temperature',
+  trigger_temp: 40.5,
+  person: { card_id: 'A1B2', name: 'Gloria' },
+  evacuated_at: null,
+  not_evacuated_alert: false,
+  calls: [],
+  readings: [{ ts: T(5), temp: 40.5 }],
+};
+
+test('GET /api/status: an open emergency gives state emergency and its summary', async () => {
+  const body = await status({ emergencies: [EMERGENCY] });
+  assert.equal(body.state, 'emergency');
+  assert.deepEqual(body.emergency, {
+    startedAt: T(5),
+    trigger: 'temperature',
+    triggerTemp: 40.5,
+    person: 'Gloria',
+    evacuated: false,
+    evacuatedAt: null,
+    notEvacuated: false,
+    helpRequested: false,
+  });
+});
+
+test('GET /api/status: the emergency wins over the lock', async () => {
+  const body = await status({
+    emergencies: [EMERGENCY],
+    system_log: [{ event: 'locked', ts: T(1) }],
+  });
+  assert.equal(body.state, 'emergency');
+});
+
+test('GET /api/status: shows evacuation, help call and not-evacuated alert', async () => {
+  const body = await status({
+    emergencies: [{
+      ...EMERGENCY,
+      evacuated_at: T(7),
+      not_evacuated_alert: true,
+      calls: [{ ts: T(6), reason: 'start' }, { ts: T(6), reason: 'help' }],
+    }],
+  });
+  assert.equal(body.emergency.evacuated, true);
+  assert.equal(body.emergency.evacuatedAt, T(7));
+  assert.equal(body.emergency.notEvacuated, true);
+  assert.equal(body.emergency.helpRequested, true);
+});
+
+test('GET /api/status: an ended emergency is not shown', async () => {
+  const body = await status({ emergencies: [{ ...EMERGENCY, ended_at: T(9) }] });
+  assert.equal(body.state, 'normal');
+  assert.equal(body.emergency, null);
+});
+
+test('GET /api/status: the summary does not send the readings', async () => {
+  const body = await status({ emergencies: [EMERGENCY] });
+  assert.equal(body.emergency.readings, undefined);
+});
+
 test('GET /api/status with the database down returns 500 and does not crash', async () => {
   const { app } = setup({ dbDown: true });
   const res = await request(app).get('/api/status');
