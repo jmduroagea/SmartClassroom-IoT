@@ -26,6 +26,11 @@ const MAX_HOURS = 24;
 const DEFAULT_HOURS = 24;
 const MS_PER_HOUR = 60 * 60 * 1000;
 const MINUTE_FORMAT = '%Y-%m-%dT%H:%M:00Z';
+// Report (#28): at most 31 days (decision 3A); every access type is counted, even with 0.
+const MAX_REPORT_DAYS = 31;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+const ACCESS_TYPES = ['in', 'out', 'denied', 'occupied', 'evacuated', 'emergency_end'];
+const MS_PER_SECOND = 1000;
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -110,6 +115,94 @@ function temperatureHistory(db, since) {
     { $group: { _id: { $dateToString: { format: MINUTE_FORMAT, date: '$ts' } }, temp: { $avg: '$temp' } } },
     { $sort: { _id: 1 } },
   ]).toArray();
+}
+
+// Reads ?from= and ?to= . Returns {from, to} as dates, or {error} when they
+// are missing, not dates, in the wrong order or more than MAX_REPORT_DAYS apart.
+function parseRange(query) {
+  const from = new Date(query.from);
+  const to = new Date(query.to);
+  if (!query.from || !query.to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return { error: 'from and to must be dates, e.g. 2026-11-10T09:00:00Z' };
+  }
+  if (from >= to) {
+    return { error: 'from must be before to' };
+  }
+  if (to - from > MAX_REPORT_DAYS * MS_PER_DAY) {
+    return { error: `the period can be at most ${MAX_REPORT_DAYS} days` };
+  }
+  return { from, to };
+}
+
+// Seconds the room was occupied between from and end, counting only the part of
+// each visit inside the period (decision 2A). `before` is the last in/exit event
+// before the period (or null): if it is an 'in', someone was already inside.
+function occupiedSeconds(before, events, from, end) {
+  let total = 0;
+  let insideSince = before && before.type === 'in' ? from : null;
+  for (const event of events) {
+    if (event.type === 'in' && insideSince === null) {
+      insideSince = event.ts;
+    } else if (EXIT_TYPES.includes(event.type) && insideSince !== null) {
+      total += event.ts - insideSince;
+      insideSince = null;
+    }
+  }
+  if (insideSince !== null && end > insideSince) {
+    total += end - insideSince;
+  }
+  return Math.round(total / MS_PER_SECOND);
+}
+
+// How an emergency ended, in words (decision 4A).
+function emergencyOutcome(doc) {
+  if (!doc.ended_at) return 'in progress';
+  if (doc.evacuated_at) return 'evacuated';
+  if (!doc.person) return 'nobody inside';
+  return 'ended, not evacuated';
+}
+
+async function buildReport(db, from, to, now) {
+  const inPeriod = { $gte: from, $lt: to };
+  const [before, events, tempRows, emergencyDocs] = await Promise.all([
+    db.collection('access_log')
+      .find({ type: { $in: ['in', ...EXIT_TYPES] }, ts: { $lt: from } })
+      .sort({ ts: -1 }).limit(1).next(),
+    db.collection('access_log').find({ ts: inPeriod }).sort({ ts: 1 }).toArray(),
+    db.collection('env').aggregate([
+      { $match: { ts: inPeriod } },
+      { $group: { _id: null, average: { $avg: '$temp' }, max: { $max: '$temp' }, readings: { $sum: 1 } } },
+    ]).toArray(),
+    db.collection('emergencies')
+      .find({ started_at: inPeriod }, { projection: { readings: 0 } })
+      .sort({ started_at: 1 }).toArray(),
+  ]);
+  const access = Object.fromEntries(ACCESS_TYPES.map((type) => [type, 0]));
+  for (const event of events) {
+    if (event.type in access) {
+      access[event.type] += 1;
+    }
+  }
+  const temps = tempRows[0];
+  // A visit still going on counts until now, never into the future.
+  const end = now < to ? now : to;
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    occupiedSeconds: occupiedSeconds(before, events, from, end),
+    temperature: temps
+      ? { average: Math.round(temps.average * 10) / 10, max: temps.max, readings: temps.readings }
+      : { average: null, max: null, readings: 0 },
+    access,
+    emergencies: emergencyDocs.map((doc) => ({
+      startedAt: doc.started_at,
+      endedAt: doc.ended_at || null,
+      trigger: doc.trigger,
+      triggerTemp: doc.trigger_temp,
+      person: doc.person ? doc.person.name : null,
+      outcome: emergencyOutcome(doc),
+    })),
+  };
 }
 
 // The emergency wins over the lock: an emergency lifts the lock (specification v4).
@@ -212,6 +305,19 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
     }
   });
 
+  app.get('/api/report', async (req, res) => {
+    const range = parseRange(req.query);
+    if (range.error) {
+      return res.status(BAD_REQUEST).json({ error: range.error });
+    }
+    try {
+      const db = await getDb();
+      return res.json(await buildReport(db, range.from, range.to, now()));
+    } catch (err) {
+      return res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
   app.get('/api/users', async (req, res) => {
     try {
       const db = await getDb();
@@ -268,4 +374,5 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
 
 module.exports = {
   createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
+  MAX_REPORT_DAYS, ACCESS_TYPES,
 };

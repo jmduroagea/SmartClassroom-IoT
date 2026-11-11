@@ -9,6 +9,7 @@ const request = require('supertest');
 
 const {
   createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
+  MAX_REPORT_DAYS, ACCESS_TYPES,
 } = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
@@ -458,5 +459,144 @@ for (const hours of ['0', String(MAX_HOURS + 1), '-1', '1.5', 'abc', '']) {
 test('GET /api/env with the database down returns 500', async () => {
   const { app } = setup({ dbDown: true });
   const res = await request(app).get('/api/env?hours=1');
+  assert.equal(res.status, 500);
+});
+
+// --- Report for a period (#28) ----------------------------------------------------
+
+// The period used by most report tests: 10:00 to 11:00, before NOW (12:00).
+const FROM = '2026-11-10T10:00:00Z';
+const TO = '2026-11-10T11:00:00Z';
+const at = (hhmm) => new Date(`2026-11-10T${hhmm}:00Z`);
+const access = (type, hhmm, name = 'Gloria') => ({ type, name, card_id: 'A1', ts: at(hhmm) });
+
+const reportUrl = (query) => `/api/report?${new URLSearchParams(query)}`;
+
+async function report(collections, from = FROM, to = TO) {
+  const { app } = setup({ collections });
+  const res = await request(app).get(reportUrl({ from, to }));
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  return res.body;
+}
+
+test('GET /api/report of an empty period gives zeros and nulls', async () => {
+  const body = await report({});
+  assert.equal(body.from, '2026-11-10T10:00:00.000Z');
+  assert.equal(body.to, '2026-11-10T11:00:00.000Z');
+  assert.equal(body.occupiedSeconds, 0);
+  assert.deepEqual(body.temperature, { average: null, max: null, readings: 0 });
+  assert.deepEqual(body.access, Object.fromEntries(ACCESS_TYPES.map((t) => [t, 0])));
+  assert.deepEqual(body.emergencies, []);
+});
+
+test('GET /api/report adds up the visits inside the period', async () => {
+  const body = await report({
+    access_log: [
+      access('in', '10:10'), access('out', '10:20'),
+      access('in', '10:30', 'Ignacio'), access('evacuated', '10:45', 'Ignacio'),
+    ],
+  });
+  assert.equal(body.occupiedSeconds, 25 * 60);
+});
+
+test('GET /api/report counts a visit that started before the period from its start', async () => {
+  const body = await report({ access_log: [access('in', '09:50'), access('out', '10:15')] });
+  assert.equal(body.occupiedSeconds, 15 * 60);
+});
+
+test('GET /api/report counts a visit still going on at the end of the period until the end', async () => {
+  const body = await report({ access_log: [access('in', '10:40'), access('out', '11:30')] });
+  assert.equal(body.occupiedSeconds, 20 * 60);
+});
+
+test('GET /api/report counts someone inside the whole period', async () => {
+  const body = await report({ access_log: [access('in', '09:00')] });
+  assert.equal(body.occupiedSeconds, 60 * 60);
+});
+
+test('GET /api/report does not count the future when the period ends after now', async () => {
+  // NOW is 12:00: someone inside since 11:30 counts 30 minutes, not until 13:00.
+  const body = await report({ access_log: [access('in', '11:30')] }, '2026-11-10T11:00:00Z', '2026-11-10T13:00:00Z');
+  assert.equal(body.occupiedSeconds, 30 * 60);
+});
+
+test('GET /api/report: denied and occupied attempts do not change the occupied time', async () => {
+  const body = await report({
+    access_log: [
+      access('in', '10:00'), access('occupied', '10:05', 'Ignacio'),
+      access('denied', '10:06', null), access('out', '10:10'),
+    ],
+  });
+  assert.equal(body.occupiedSeconds, 10 * 60);
+});
+
+test('GET /api/report counts the access attempts of the period by type', async () => {
+  const body = await report({
+    access_log: [
+      access('denied', '09:59', null),
+      access('in', '10:00'), access('denied', '10:01', null), access('denied', '10:02', null),
+      access('occupied', '10:03', 'Ignacio'), access('out', '10:30'),
+      access('in', '11:00'),
+    ],
+  });
+  assert.deepEqual(body.access, { in: 1, out: 1, denied: 2, occupied: 1, evacuated: 0, emergency_end: 0 });
+});
+
+test('GET /api/report gives the average and maximum temperature of the period', async () => {
+  const body = await report({
+    env: [
+      { temp: 50, ts: at('09:59') },
+      { temp: 21, ts: at('10:00') }, { temp: 22, ts: at('10:30') }, { temp: 23.5, ts: at('10:59') },
+      { temp: 60, ts: at('11:00') },
+    ],
+  });
+  assert.deepEqual(body.temperature, { average: 22.2, max: 23.5, readings: 3 });
+});
+
+test('GET /api/report lists the emergencies of the period and how they ended', async () => {
+  const emergency = (start, extra) => ({ ...EMERGENCY, started_at: at(start), ended_at: at('10:50'), ...extra });
+  const body = await report({
+    emergencies: [
+      emergency('09:30', {}),
+      emergency('10:01', { evacuated_at: at('10:02') }),
+      emergency('10:10', { evacuated_at: null }),
+      emergency('10:20', { person: null }),
+      emergency('10:55', { ended_at: null }),
+    ],
+  });
+  assert.deepEqual(body.emergencies.map((e) => [e.startedAt, e.outcome]), [
+    ['2026-11-10T10:01:00.000Z', 'evacuated'],
+    ['2026-11-10T10:10:00.000Z', 'ended, not evacuated'],
+    ['2026-11-10T10:20:00.000Z', 'nobody inside'],
+    ['2026-11-10T10:55:00.000Z', 'in progress'],
+  ]);
+  assert.equal(body.emergencies[0].person, 'Gloria');
+  assert.equal(body.emergencies[0].readings, undefined);
+});
+
+const BAD_RANGES = [
+  ['missing from', { to: TO }],
+  ['missing to', { from: FROM }],
+  ['from is not a date', { from: 'yesterday', to: TO }],
+  ['from equal to to', { from: FROM, to: FROM }],
+  ['from after to', { from: TO, to: FROM }],
+  [`more than ${MAX_REPORT_DAYS} days`, { from: '2026-10-01T00:00:00Z', to: '2026-11-02T00:00:00Z' }],
+];
+for (const [name, query] of BAD_RANGES) {
+  test(`GET /api/report with ${name} returns 400`, async () => {
+    const { app } = setup({});
+    const res = await request(app).get(reportUrl(query));
+    assert.equal(res.status, 400);
+    assert.ok(res.body.error);
+  });
+}
+
+test(`GET /api/report accepts exactly ${MAX_REPORT_DAYS} days`, async () => {
+  await report({}, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z');
+});
+
+test('GET /api/report with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get(reportUrl({ from: FROM, to: TO }));
   assert.equal(res.status, 500);
 });

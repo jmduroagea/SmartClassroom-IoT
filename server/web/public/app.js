@@ -117,6 +117,51 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     loadChart();
   };
 
+  // --- Report for a chosen period (#28) ---
+  var DAY_MS = 24 * 60 * 60 * 1000;
+  // datetime-local fields work with whole minutes: no seconds or milliseconds.
+  function toMinute(date) {
+    var d = new Date(date.getTime());
+    d.setSeconds(0, 0);
+    return d;
+  }
+  var startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  $scope.period = { from: startOfToday, to: toMinute(new Date()) };
+  $scope.report = null;
+
+  $scope.loadReport = function () {
+    if (!$scope.period.from || !$scope.period.to) {
+      $scope.error = 'Choose both dates of the period';
+      return;
+    }
+    var params = { from: $scope.period.from.toISOString(), to: $scope.period.to.toISOString() };
+    $http.get('/api/report', { params: params }).then(function (res) {
+      $scope.report = res.data;
+      $scope.error = null;
+    }, fail);
+  };
+
+  $scope.reportToday = function () {
+    var from = new Date();
+    from.setHours(0, 0, 0, 0);
+    $scope.period = { from: from, to: toMinute(new Date()) };
+    $scope.loadReport();
+  };
+
+  $scope.reportLastWeek = function () {
+    var to = toMinute(new Date());
+    $scope.period = { from: new Date(to.getTime() - 7 * DAY_MS), to: to };
+    $scope.loadReport();
+  };
+
+  // 5400 -> '1 h 30 min'
+  $scope.duration = function (seconds) {
+    var minutes = Math.round(seconds / 60);
+    var hours = Math.floor(minutes / 60);
+    return (hours > 0 ? hours + ' h ' : '') + (minutes % 60) + ' min';
+  };
+
   refresh();
   $interval(refresh, 5000);
   loadChart();
