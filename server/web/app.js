@@ -33,6 +33,9 @@ const ACCESS_TYPES = ['in', 'out', 'denied', 'occupied', 'evacuated', 'emergency
 const MS_PER_SECOND = 1000;
 const DEFAULT_ACCESS_LIMIT = 50;
 const MAX_ACCESS_LIMIT = 200;
+// A rejected card is offered for registration only for a short while.
+const LAST_UNKNOWN_MINUTES = 10;
+const MS_PER_MINUTE = 60 * 1000;
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -339,6 +342,28 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
     }
   });
 
+  // The last unknown card that was rejected, so it can be registered without
+  // typing its id. Known cards rejected while the system is locked have a name
+  // and are left out, and so are cards registered since.
+  app.get('/api/access/last-unknown', async (req, res) => {
+    try {
+      const db = await getDb();
+      const since = new Date(now().getTime() - LAST_UNKNOWN_MINUTES * MS_PER_MINUTE);
+      const rejected = await db
+        .collection('access_log')
+        .find({ type: 'denied', name: null, ts: { $gte: since } })
+        .sort({ ts: -1 })
+        .toArray();
+      const ids = rejected.map((entry) => entry.card_id);
+      const registered = await db.collection('users').find({ card_id: { $in: ids } }).toArray();
+      const registeredIds = new Set(registered.map((user) => user.card_id));
+      const last = rejected.find((entry) => !registeredIds.has(entry.card_id));
+      return res.json(last ? { cardId: last.card_id, ts: last.ts } : { cardId: null, ts: null });
+    } catch (err) {
+      return res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
   app.get('/api/users', async (req, res) => {
     try {
       const db = await getDb();
@@ -396,4 +421,5 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
 module.exports = {
   createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
   MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
+  LAST_UNKNOWN_MINUTES,
 };

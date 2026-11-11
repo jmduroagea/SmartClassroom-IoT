@@ -11,6 +11,7 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
   $scope.emergencies = [];
   $scope.accesses = [];
   $scope.newCard = {};
+  $scope.lastUnknown = null;
   $scope.error = null;
 
   function fail(err) {
@@ -24,6 +25,7 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     }, fail);
     $http.get('/api/users').then(function (res) { $scope.users = res.data; }, fail);
     $http.get('/api/access').then(function (res) { $scope.accesses = res.data; }, fail);
+    $http.get('/api/access/last-unknown').then(function (res) { $scope.lastUnknown = res.data; }, fail);
     $http.get('/api/emergencies').then(function (res) { $scope.emergencies = res.data; }, fail);
   }
 
@@ -80,6 +82,10 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
 
   $scope.endEmergency = function () {
     emergencyCommand('end', 'end');
+  };
+
+  $scope.useLastUnknown = function () {
+    $scope.newCard.card_id = $scope.lastUnknown.cardId;
   };
 
   $scope.addCard = function () {
