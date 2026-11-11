@@ -9,7 +9,7 @@ const request = require('supertest');
 
 const {
   createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
-  MAX_REPORT_DAYS, ACCESS_TYPES,
+  MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
 } = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
@@ -598,5 +598,64 @@ test(`GET /api/report accepts exactly ${MAX_REPORT_DAYS} days`, async () => {
 test('GET /api/report with the database down returns 500', async () => {
   const { app } = setup({ dbDown: true });
   const res = await request(app).get(reportUrl({ from: FROM, to: TO }));
+  assert.equal(res.status, 500);
+});
+
+// --- Access history (#30) ---------------------------------------------------------
+
+test('GET /api/access returns the entries newest first', async () => {
+  const { app } = setup({
+    collections: {
+      access_log: [
+        access('in', '10:00'),
+        { type: 'denied', name: null, card_id: 'FF99', ts: at('10:05') },
+        access('out', '10:10'),
+      ],
+    },
+  });
+  const res = await request(app).get('/api/access');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, [
+    { ts: '2026-11-10T10:10:00.000Z', cardId: 'A1', name: 'Gloria', type: 'out' },
+    { ts: '2026-11-10T10:05:00.000Z', cardId: 'FF99', name: null, type: 'denied' },
+    { ts: '2026-11-10T10:00:00.000Z', cardId: 'A1', name: 'Gloria', type: 'in' },
+  ]);
+});
+
+test(`GET /api/access without limit returns the last ${DEFAULT_ACCESS_LIMIT}`, async () => {
+  const many = Array.from({ length: DEFAULT_ACCESS_LIMIT + 10 }, (_, i) => ({
+    type: 'denied', name: null, card_id: `C${i}`, ts: new Date(NOW.getTime() - i * 60000),
+  }));
+  const { app } = setup({ collections: { access_log: many } });
+  const res = await request(app).get('/api/access');
+  assert.equal(res.body.length, DEFAULT_ACCESS_LIMIT);
+  assert.equal(res.body[0].cardId, 'C0');
+});
+
+test('GET /api/access?limit=2 returns only 2', async () => {
+  const { app } = setup({
+    collections: { access_log: [access('in', '10:00'), access('out', '10:10'), access('in', '10:20')] },
+  });
+  const res = await request(app).get('/api/access?limit=2');
+  assert.deepEqual(res.body.map((e) => e.type), ['in', 'out']);
+});
+
+test('GET /api/access with no entries returns an empty list', async () => {
+  const { app } = setup({});
+  const res = await request(app).get('/api/access');
+  assert.deepEqual(res.body, []);
+});
+
+for (const limit of ['0', String(MAX_ACCESS_LIMIT + 1), '-5', '2.5', 'abc', '']) {
+  test(`GET /api/access?limit=${limit} returns 400`, async () => {
+    const { app } = setup({});
+    const res = await request(app).get(`/api/access?limit=${limit}`);
+    assert.equal(res.status, 400);
+  });
+}
+
+test('GET /api/access with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get('/api/access');
   assert.equal(res.status, 500);
 });

@@ -9,6 +9,7 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
   $scope.status = { state: 'normal', devices: {}, temperature: null, fanSpeed: 0, emergency: null };
   $scope.users = [];
   $scope.emergencies = [];
+  $scope.accesses = [];
   $scope.newCard = {};
   $scope.error = null;
 
@@ -22,10 +23,24 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
       $scope.error = null;
     }, fail);
     $http.get('/api/users').then(function (res) { $scope.users = res.data; }, fail);
+    $http.get('/api/access').then(function (res) { $scope.accesses = res.data; }, fail);
     $http.get('/api/emergencies').then(function (res) { $scope.emergencies = res.data; }, fail);
   }
 
   // Readable text for the reason of a call: 'not_evacuated' -> 'not evacuated'.
+  var ACCESS_LABELS = {
+    in: 'entered',
+    out: 'left',
+    denied: 'rejected',
+    occupied: 'room occupied',
+    evacuated: 'evacuated',
+    emergency_end: 'exit closed at end of emergency',
+  };
+
+  $scope.accessLabel = function (type) {
+    return ACCESS_LABELS[type] || type;
+  };
+
   $scope.callReason = function (reason) {
     return String(reason).replace(/_/g, ' ');
   };
