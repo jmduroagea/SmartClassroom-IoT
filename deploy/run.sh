@@ -24,7 +24,7 @@ set +a
 cd "$REPO_DIR"
 
 case "${1:-}" in
-  door)  exec "$PYTHON" door/door.py ;;
+  door)  exec "$PYTHON" -m door.main ;;
   room)  exec "$PYTHON" -m room.main ;;
   brain) exec "$PYTHON" -m server.brain.main ;;
   web)   cd server/web && exec node server.js ;;
