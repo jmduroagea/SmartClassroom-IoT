@@ -26,14 +26,26 @@ def scan(sim, card_id):
 
 
 def enter(sim, card_id, name):
+    """Scan a card and wait until the entry is completely over."""
     scan(sim, card_id)
     sim.wait_for_status(lambda status: status["inside"] == name)
+    # The web shows the entry before the brain has sent all its orders. Wait
+    # for every one of them, so none arrives late and confuses the next check.
+    sim.said(containing="Welcome")
+    sim.wait_for_message(topics.DOOR_LED_CMD)
+    sim.wait_for_message(topics.DOOR_PIR_ENABLE, lambda order: order["enabled"] is False)
+    sim.wait_for_message(topics.ROOM_MIC_ENABLE, lambda order: order["enabled"] is True)
     sim.forget_messages()
 
 
 def leave(sim, card_id):
+    """Scan the card of the person inside and wait until the exit is completely over."""
     scan(sim, card_id)
     sim.wait_for_status(lambda status: status["inside"] is None)
+    sim.said(containing="Goodbye")
+    sim.wait_for_message(topics.DOOR_LED_CMD)
+    sim.wait_for_message(topics.DOOR_PIR_ENABLE, lambda order: order["enabled"] is True)
+    sim.wait_for_message(topics.ROOM_MIC_ENABLE, lambda order: order["enabled"] is False)
     sim.forget_messages()
 
 
@@ -52,9 +64,9 @@ def test_known_card_enters(sim):
     welcome = sim.said(containing="Welcome")
     assert "Gloria" in welcome
     assert str(round(BASE_TEMPERATURE)) in welcome
-    assert sim.wait_for_message(topics.DOOR_LED_CMD)["mode"] == "open"
-    assert sim.wait_for_message(topics.DOOR_PIR_ENABLE)["enabled"] is False
-    assert sim.wait_for_message(topics.ROOM_MIC_ENABLE)["enabled"] is True
+    sim.wait_for_message(topics.DOOR_LED_CMD, lambda order: order["mode"] == "open")
+    sim.wait_for_message(topics.DOOR_PIR_ENABLE, lambda order: order["enabled"] is False)
+    sim.wait_for_message(topics.ROOM_MIC_ENABLE, lambda order: order["enabled"] is True)
     sim.wait_for_status(lambda status: status["inside"] == "Gloria")
 
 
@@ -64,8 +76,8 @@ def test_same_card_leaves(sim):
     scan(sim, GLORIA)
 
     assert "Gloria" in sim.said(containing="Goodbye")
-    assert sim.wait_for_message(topics.ROOM_MIC_ENABLE)["enabled"] is False
-    assert sim.wait_for_message(topics.DOOR_PIR_ENABLE)["enabled"] is True
+    sim.wait_for_message(topics.ROOM_MIC_ENABLE, lambda order: order["enabled"] is False)
+    sim.wait_for_message(topics.DOOR_PIR_ENABLE, lambda order: order["enabled"] is True)
     sim.wait_for_status(lambda status: status["inside"] is None)
 
 
@@ -131,7 +143,7 @@ def test_fan_from_web_shows_only_the_confirmed_speed(sim):
     assert status_code == 200
 
     # The order reaches the Room Pi...
-    assert sim.wait_for_message(topics.ROOM_FAN_CMD)["speed"] == 3
+    sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == 3)
     # ...but the web keeps the old speed until the Room Pi confirms it moved.
     assert sim.status()["fanSpeed"] == 0
     confirm_fan(sim, 3)
@@ -156,7 +168,7 @@ def test_fan_stops_when_person_leaves(sim):
 
     scan(sim, GLORIA)
 
-    assert sim.wait_for_message(topics.ROOM_FAN_CMD)["speed"] == FAN_OFF
+    sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == FAN_OFF)
 
 
 def test_web_shows_when_room_pi_goes_offline(sim):
@@ -186,7 +198,7 @@ def test_voice_hot_turns_fan_on_when_inside(sim):
 
     sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="hot")
 
-    assert sim.wait_for_message(topics.ROOM_FAN_CMD)["speed"] == FAN_SPEED_ON_HOT
+    sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == FAN_SPEED_ON_HOT)
 
 
 def test_voice_temperature_is_answered_when_inside(sim):
@@ -203,7 +215,7 @@ def test_voice_temperature_uses_the_latest_reading(sim):
 
     sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="temp")
 
-    assert str(round(WARMER_TEMPERATURE)) in sim.said(containing="degrees")
+    sim.said(containing=f"{round(WARMER_TEMPERATURE)} degrees")
 
 
 def test_voice_help_calls_the_emergency_centre(sim):
