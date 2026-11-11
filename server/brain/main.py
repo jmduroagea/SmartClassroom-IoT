@@ -1,23 +1,32 @@
 import json
-import os
-import paho.mqtt.client as mqtt
-from common.topics import DOOR_RFID, DOOR_SPEAKER_SAY
+import logging
+import time
+from common.config import load_config
+from common.paho_bus import PahoBus
+from common.topics import DOOR_RFID, DOOR_SPEAKER_SAY, ROOM_TEMP, ROOM_MOTION, ROOM_FAN
 from server.brain.core.state_machine import StateMachine
 from server.brain.adapters.mongo_repository import MongoRepository
 
+logger = logging.getLogger(__name__)
+
+
 def main():
+    logging.basicConfig(level=logging.INFO)
+
+    # 1. Load config properly using common module
+    config = load_config()
+
+    # 2. Instantiate repository with injected config
+    repo = MongoRepository(config)
     sm = StateMachine()
-    repo = MongoRepository()
 
-    def on_connect(client, userdata, flags, rc):
-        print(f"[Brain] Connected to MQTT broker with result code {rc}")
-        client.subscribe(DOOR_RFID)
+    # 3. Use PahoBus instead of raw mqtt client
+    bus = PahoBus(config=config, client_id="brain")
 
-    def on_message(client, userdata, msg):
+    def handle_rfid(topic, payload):
         try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-            card_id = payload.get("card_id")
-
+            data = json.loads(payload) if isinstance(payload, str) else payload
+            card_id = data.get("card_id")
             if not card_id:
                 return
 
@@ -28,25 +37,67 @@ def main():
 
             for action in actions:
                 if action["type"] == "say":
-                    client.publish(DOOR_SPEAKER_SAY, json.dumps({"text": action["text"]}))
+                    bus.publish(DOOR_SPEAKER_SAY, {"text": action["text"]})
                 elif action["type"] == "log_access":
-                    repo.log_access(action["event_type"], action["card_id"], action["name"])
+                    repo.log_access(
+                        card_id=action["card_id"],
+                        access_type=action["event_type"],
+                        name=action["name"],
+                        ts=bus.clock.now(),
+                    )
                 elif action["type"] == "log_system":
-                    repo.log_system(action["level"], action["msg"])
-
+                    repo.log_system(
+                        event=action["level"],
+                        device="brain",
+                        detail=action["msg"],
+                        ts=bus.clock.now(),
+                    )
         except Exception as e:
-            print(f"[Brain] Error processing message: {e}")
+            logger.error(f"[Brain] Error processing RFID message: {e}")
 
-    client = mqtt.Client()
-    client.on_connect = on_connect
-    client.on_message = on_message
+    def handle_temp(topic, payload):
+        try:
+            data = json.loads(payload) if isinstance(payload, str) else payload
+            temp = data.get("temp")
+            if temp is not None:
+                repo.log_env(float(temp), bus.clock.now())
+        except Exception as e:
+            logger.error(f"[Brain] Error processing temperature message: {e}")
 
-    broker_host = os.getenv("MQTT_HOST", "localhost")
-    broker_port = int(os.getenv("MQTT_PORT", 1883))
+    def handle_motion(topic, payload):
+        try:
+            data = json.loads(payload) if isinstance(payload, str) else payload
+            detected = data.get("detected")
+            if detected is not None:
+                repo.log_motion(bool(detected), bus.clock.now())
+        except Exception as e:
+            logger.error(f"[Brain] Error processing motion message: {e}")
 
-    client.connect_async(broker_host, broker_port, 60)
-    print(f"[Brain] Server started, connecting asynchronously to {broker_host}:{broker_port}...")
-    client.loop_forever()
+    def handle_fan(topic, payload):
+        try:
+            data = json.loads(payload) if isinstance(payload, str) else payload
+            speed = data.get("speed")
+            if speed is not None:
+                repo.log_fan(int(speed), bus.clock.now())
+        except Exception as e:
+            logger.error(f"[Brain] Error processing fan message: {e}")
+
+    # Register subscriptions
+    bus.subscribe(DOOR_RFID, handle_rfid)
+    bus.subscribe(ROOM_TEMP, handle_temp)
+    bus.subscribe(ROOM_MOTION, handle_motion)
+    bus.subscribe(ROOM_FAN, handle_fan)
+
+    logger.info("[Brain] Starting PahoBus loop...")
+    bus.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("[Brain] Shutting down...")
+        bus.stop()
+
 
 if __name__ == "__main__":
     main()
