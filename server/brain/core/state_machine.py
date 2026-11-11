@@ -1,3 +1,4 @@
+from common.messages import FAN_SPEEDS
 from enum import Enum
 
 
@@ -179,11 +180,40 @@ class StateMachine:
             actions.append({"type": "save_temperature", "value": temp})
         return actions
 
-    def handle_voice_command(self, command: str) -> list:
-        """Handles incoming voice commands."""
+    def handle_voice_command(self, command) -> list:
+        """Handle voice commands ('hot', 'cold') strictly while INSIDE and not in EMERGENCY."""
         if self.state == State.EMERGENCY or self.state != State.INSIDE:
             return []
-        return [{"type": "voice_control", "command": command}]
+
+        text = command if isinstance(command, str) else (command.get("text") or command.get("command") or "")
+        text = text.strip().lower()
+
+        actions = []
+        speeds = FAN_SPEEDS
+
+        if text == "hot":
+            if self.fan_speed == 0:
+                mid_index = len(speeds) // 2
+                self.fan_speed = speeds[mid_index]
+                actions.append({"type": "set_fan", "speed": self.fan_speed})
+            elif self.fan_speed == speeds[-1]:
+                actions.append({"type": "say", "text": "The fan is at maximum."})
+            else:
+                current_index = speeds.index(self.fan_speed)
+                self.fan_speed = speeds[current_index + 1]
+                actions.append({"type": "set_fan", "speed": self.fan_speed})
+                if self.fan_speed == speeds[-1]:
+                    actions.append({"type": "say", "text": "The fan is at maximum."})
+
+        elif text == "cold":
+            if self.fan_speed == 0:
+                actions.append({"type": "say", "text": "The fan is already off."})
+            else:
+                current_index = speeds.index(self.fan_speed)
+                self.fan_speed = speeds[current_index - 1]
+                actions.append({"type": "set_fan", "speed": self.fan_speed})
+
+        return actions
 
     def handle_web_fan(self, speed_level: int = 0) -> list:
         """Handles fan commands exclusively from the web."""
