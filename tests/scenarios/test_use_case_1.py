@@ -195,7 +195,6 @@ def test_web_rejects_invalid_fan_speed(sim, body):
 # --- Voice assistant ----------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_hot_turns_fan_on_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
