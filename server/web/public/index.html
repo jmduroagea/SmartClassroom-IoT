@@ -99,7 +99,11 @@
           <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
           System locked
         </span>
-        <button class="btn btn-warning" type="button" ng-click="unlock()">Unlock</button>
+        <form class="unlock-form" ng-submit="unlock()">
+          <label for="unlock-password">Password</label>
+          <input id="unlock-password" type="password" ng-model="password.unlock" autocomplete="current-password">
+          <button class="btn btn-warning" type="submit" ng-disabled="!password.unlock">Unlock</button>
+        </form>
       </div>
     </section>
 

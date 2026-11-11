@@ -119,6 +119,9 @@ body {
 }
 .locked-bar span { display: flex; gap: 10px; align-items: center; color: var(--orange); font-weight: 600; }
 .locked-bar svg { stroke: var(--orange); }
+.unlock-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.unlock-form label { font-size: 13px; color: var(--orange); }
+.unlock-form input { height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #F3C38F; font-size: 14px; width: 150px; }
 
 /* Buttons and fields */
 button, input { font: inherit; }
