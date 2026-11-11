@@ -59,7 +59,9 @@
   <div class="card">
     <h2>Fan</h2>
     <p>Current speed: {{ status.fanSpeed }}</p>
-    <button ng-repeat="s in [0, 1, 2, 3]" ng-class="{ active: status.fanSpeed === s }" ng-click="setFan(s)">
+    <p ng-if="status.state === 'emergency'"><i>Disabled during an emergency.</i></p>
+    <button ng-repeat="s in [0, 1, 2, 3]" ng-class="{ active: status.fanSpeed === s }" ng-click="setFan(s)"
+            ng-disabled="status.state === 'emergency'">
       {{ s === 0 ? 'Off' : 'Speed ' + s }}
     </button>
   </div>
