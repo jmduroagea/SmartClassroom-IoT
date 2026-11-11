@@ -66,12 +66,16 @@ services:
     image: smartroom-web
     volumes:
       - ./server/web/server.js:/app/server.js:ro
+      - ./server/web/app.js:/app/app.js:ro
+      - ./server/web/config.js:/app/config.js:ro
       - ./server/web/public:/app/public:ro
     environment:
       MQTT_HOST: broker
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB: smartroom
       PORT: "3001"
+      # No default: the web refuses to start without a password (put it in .env)
+      WEB_PASSWORD: ${WEB_PASSWORD:?set WEB_PASSWORD in .env (see .env.example)}
     ports:
       - "127.0.0.1:3001:3001"                  # open http://localhost:3001
     networks: [iot, db, edge]
