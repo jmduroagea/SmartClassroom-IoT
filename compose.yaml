@@ -88,3 +88,13 @@ networks:
   iot: { internal: true }    # MQTT traffic between programs, no internet
   db: { internal: true }     # only the brain, the web and setup-db reach MongoDB
   edge: {}                   # the only way in from the laptop: broker and web
+
+  emergency_center:
+    build:
+      context: .
+      dockerfile: emergency_center/Dockerfile
+    container_name: smart_emergency_center
+    networks:
+      - smart_classroom_net
+    depends_on:
+      - mqtt
