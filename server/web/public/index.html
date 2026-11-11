@@ -1,193 +1,272 @@
 <!doctype html>
-<html ng-app="smartRoom">
+<html lang="en" ng-app="smartRoom">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SmartClassroom</title>
+  <link rel="stylesheet" href="/style.css">
   <script src="/lib/angular.min.js"></script>
   <script src="/lib/chartjs/chart.umd.min.js"></script>
   <script src="/app.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    .locked { border-color: #d33; background: #fdeeee; }
-    .emergency { background: #d33; color: #fff; padding: 1rem 1.2rem; border-radius: 8px; margin-bottom: 1rem; }
-    .emergency h2 { margin-top: 0; }
-    .emergency .alarm { background: #fff; color: #d33; font-weight: bold; padding: .2rem .5rem; border-radius: 4px; }
-    .demo { border-style: dashed; }
-    .in-progress { color: #d33; font-weight: bold; }
-    .calls { margin: 0; padding-left: 1rem; }
-    .chart-box { position: relative; height: 260px; }
-    .access-in { color: #2a7a2a; }
-    .access-denied { color: #d33; }
-    .access-occupied { color: #d68000; }
-    .stale { color: #888; }
-    .error { color: #d33; }
-    button { margin-right: .5rem; padding: .4rem .9rem; }
-    button.active { font-weight: bold; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { text-align: left; padding: .3rem; border-bottom: 1px solid #eee; }
-  </style>
 </head>
 <body ng-controller="MainCtrl">
-  <h1>SmartClassroom</h1>
+<div class="page">
+
+  <header class="header">
+    <div class="brand">
+      <div class="logo">
+        <svg aria-hidden="true" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
+      </div>
+      <div>
+        <h1 class="title"><span class="smart">Smart</span>Classroom</h1>
+        <p class="subtitle">Live room status, updated every 5 s</p>
+      </div>
+    </div>
+    <div class="badges">
+      <span class="pill state-{{ status.state }}"><span class="dot"></span>{{ status.state }}</span>
+      <span class="device device-{{ status.devices.door }}">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+        Door Pi {{ status.devices.door }}
+      </span>
+      <span class="device device-{{ status.devices.room }}">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+        Room Pi {{ status.devices.room }}
+      </span>
+    </div>
+  </header>
+
   <p class="error" ng-if="error">{{ error }}</p>
 
-  <div class="emergency" ng-if="status.state === 'emergency'">
-    <h2>⚠ EMERGENCY</h2>
-    <p>Started at {{ status.emergency.startedAt | date:'HH:mm:ss' }}
-      ({{ status.emergency.trigger === 'simulated' ? 'simulated' : 'temperature rise' }})</p>
-    <p><b>Temperature now:</b>
-      {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading' }}</p>
-    <p ng-if="status.emergency.person"><b>Person inside:</b> {{ status.emergency.person }} —
-      <span ng-if="status.emergency.evacuated">evacuated at {{ status.emergency.evacuatedAt | date:'HH:mm:ss' }}</span>
-      <span ng-if="!status.emergency.evacuated">not evacuated yet</span>
-    </p>
-    <p ng-if="!status.emergency.person">Nobody was inside.</p>
-    <p ng-if="status.emergency.notEvacuated"><span class="alarm">Person not evacuated</span></p>
-    <p ng-if="status.emergency.helpRequested"><span class="alarm">Help requested</span></p>
-    <form ng-submit="endEmergency()">
-      <input type="password" ng-model="password.end" placeholder="Password" autocomplete="current-password">
-      <button type="submit" ng-disabled="!password.end">End emergency</button>
-    </form>
-  </div>
-
-  <div class="card" ng-class="{ locked: status.state === 'locked' }">
-    <h2>Room status</h2>
-    <p><b>State:</b> {{ status.state }}</p>
-    <p><b>Inside:</b> {{ status.inside || 'Room empty' }}</p>
-    <p ng-class="{ stale: temperatureStale() }"><b>Temperature:</b>
-      {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading yet' }}
-      <span ng-if="temperatureStale()">⚠ old reading ({{ status.temperatureTs | date:'HH:mm:ss' }})</span>
-    </p>
-    <p><b>Devices:</b> door {{ status.devices.door }}, room {{ status.devices.room }}</p>
-    <p ng-if="status.state === 'locked'"><b>System locked.</b> <button ng-click="unlock()">Unlock</button></p>
-  </div>
-
-  <div class="card">
-    <h2>Fan</h2>
-    <p>Current speed: {{ status.fanSpeed }}</p>
-    <p ng-if="status.state === 'emergency'"><i>Disabled during an emergency.</i></p>
-    <button ng-repeat="s in [0, 1, 2, 3]" ng-class="{ active: status.fanSpeed === s }" ng-click="setFan(s)"
-            ng-disabled="status.state === 'emergency'">
-      {{ s === 0 ? 'Off' : 'Speed ' + s }}
-    </button>
-  </div>
-
-  <div class="card">
-    <h2>Temperature</h2>
-    <button ng-repeat="h in chartPeriods" ng-class="{ active: chartHours === h }" ng-click="setChartHours(h)">
-      {{ h }} h
-    </button>
-    <p ng-if="chartEmpty"><i>No readings in this period.</i></p>
-    <div class="chart-box"><canvas id="tempChart"></canvas></div>
-  </div>
-
-  <div class="card">
-    <h2>Report</h2>
-    <form ng-submit="loadReport()">
-      From <input type="datetime-local" ng-model="period.from">
-      To <input type="datetime-local" ng-model="period.to">
-      <button type="submit">Generate</button>
-    </form>
-    <p>
-      <button ng-click="reportToday()">Today</button>
-      <button ng-click="reportLastWeek()">Last 7 days</button>
-    </p>
-    <div ng-if="report">
-      <p><b>Period:</b> {{ report.from | date:'dd/MM/yyyy HH:mm' }} – {{ report.to | date:'dd/MM/yyyy HH:mm' }}</p>
-      <p><b>Room occupied:</b> {{ duration(report.occupiedSeconds) }}</p>
-      <p><b>Temperature:</b>
-        <span ng-if="report.temperature.readings > 0">
-          average {{ report.temperature.average | number:1 }} °C,
-          maximum {{ report.temperature.max | number:1 }} °C
-          ({{ report.temperature.readings }} readings)
-        </span>
-        <span ng-if="report.temperature.readings === 0">no readings</span>
-      </p>
-      <p><b>Access attempts:</b></p>
-      <table>
-        <tr><th ng-repeat="(type, count) in report.access">{{ type }}</th></tr>
-        <tr><td ng-repeat="(type, count) in report.access">{{ count }}</td></tr>
-      </table>
-      <p><b>Emergencies:</b> <span ng-if="report.emergencies.length === 0">none</span></p>
-      <table ng-if="report.emergencies.length > 0">
-        <tr><th>Start</th><th>Trigger</th><th>Person</th><th>How it ended</th></tr>
-        <tr ng-repeat="e in report.emergencies">
-          <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
-          <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
-          <td>{{ e.person || 'nobody' }}</td>
-          <td ng-class="{ 'in-progress': e.outcome === 'ended, not evacuated' }">{{ e.outcome }}</td>
-        </tr>
-      </table>
+  <section class="emergency" ng-if="status.state === 'emergency'">
+    <div class="emergency-main">
+      <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <div>
+        <h2>EMERGENCY – {{ status.emergency.trigger === 'simulated' ? 'simulated' : 'temperature rise' }}</h2>
+        <p>
+          Started {{ status.emergency.startedAt | date:'HH:mm:ss' }}
+          · now {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading' }}
+        </p>
+        <p ng-if="status.emergency.person">
+          {{ status.emergency.person }} was inside –
+          <span ng-if="status.emergency.evacuated">evacuated at {{ status.emergency.evacuatedAt | date:'HH:mm:ss' }}</span>
+          <span ng-if="!status.emergency.evacuated">not evacuated yet</span>
+        </p>
+        <p ng-if="!status.emergency.person">Nobody was inside.</p>
+        <div class="alarms" ng-if="status.emergency.notEvacuated || status.emergency.helpRequested">
+          <span class="alarm" ng-if="status.emergency.notEvacuated">Person not evacuated</span>
+          <span class="alarm" ng-if="status.emergency.helpRequested">Help requested</span>
+        </div>
+      </div>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>Registered cards</h2>
-    <table>
-      <tr><th>Card</th><th>Name</th></tr>
-      <tr ng-repeat="u in users"><td>{{ u.card_id }}</td><td>{{ u.name }}</td></tr>
-    </table>
-    <h3>Add a card</h3>
-    <p ng-if="lastUnknown.cardId">
-      <button ng-click="useLastUnknown()">
-        Use last rejected card: {{ lastUnknown.cardId }} ({{ lastUnknown.ts | date:'HH:mm' }})
-      </button>
-    </p>
-    <input ng-model="newCard.card_id" placeholder="Card id">
-    <input ng-model="newCard.name" placeholder="Name">
-    <button ng-click="addCard()">Add</button>
-  </div>
-
-  <div class="card">
-    <h2>Access history</h2>
-    <p ng-if="accesses.length === 0">No accesses yet.</p>
-    <table ng-if="accesses.length > 0">
-      <tr><th>Time</th><th>Name</th><th>Card</th><th>What happened</th></tr>
-      <tr ng-repeat="a in accesses">
-        <td>{{ a.ts | date:'dd/MM HH:mm:ss' }}</td>
-        <td>{{ a.name || 'unknown card' }}</td>
-        <td>{{ a.cardId }}</td>
-        <td class="access-{{ a.type }}">{{ accessLabel(a.type) }}</td>
-      </tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>Emergency history</h2>
-    <p ng-if="emergencies.length === 0">No emergencies yet.</p>
-    <table ng-if="emergencies.length > 0">
-      <tr><th>Start</th><th>End</th><th>Trigger</th><th>Person inside</th><th>Left at</th><th>Calls</th></tr>
-      <tr ng-repeat="e in emergencies">
-        <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
-        <td>
-          <span ng-if="e.inProgress" class="in-progress">in progress</span>
-          <span ng-if="!e.inProgress">{{ e.endedAt | date:'HH:mm:ss' }}</span>
-        </td>
-        <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
-        <td>{{ e.person || 'nobody' }}</td>
-        <td>
-          <span ng-if="e.evacuatedAt">{{ e.evacuatedAt | date:'HH:mm:ss' }}</span>
-          <span ng-if="!e.evacuatedAt && e.notEvacuated" class="in-progress">not evacuated</span>
-          <span ng-if="!e.evacuatedAt && !e.notEvacuated">-</span>
-        </td>
-        <td>
-          <span ng-if="e.calls.length === 0">-</span>
-          <ul class="calls" ng-if="e.calls.length > 0">
-            <li ng-repeat="c in e.calls">{{ c.ts | date:'HH:mm:ss' }} {{ callReason(c.reason) }}</li>
-          </ul>
-        </td>
-      </tr>
-    </table>
-  </div>
-
-  <div class="card demo">
-    <h2>Demo / tests</h2>
-    <p>Starts an emergency without heating the sensor.</p>
-    <form ng-submit="simulateEmergency()">
-      <input type="password" ng-model="password.simulate" placeholder="Password" autocomplete="current-password">
-      <button type="submit" ng-disabled="!password.simulate">Simulate emergency</button>
+    <form ng-submit="endEmergency()">
+      <label for="end-password">Password</label>
+      <input id="end-password" type="password" ng-model="password.end" autocomplete="current-password">
+      <button class="btn" type="submit" ng-disabled="!password.end">End emergency</button>
     </form>
+  </section>
+
+  <div class="row">
+    <section class="card grow-2">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-6h4v6"/></svg>
+        <h2>Room now</h2>
+      </div>
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile-icon person">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          </div>
+          <div>
+            <p class="tile-label">Inside</p>
+            <p class="tile-value">{{ status.inside || 'Room empty' }}</p>
+          </div>
+        </div>
+        <div class="tile">
+          <div class="tile-icon temp">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg>
+          </div>
+          <div>
+            <p class="tile-label">Temperature</p>
+            <p class="tile-value" ng-class="{ stale: temperatureStale() }">
+              {{ status.temperature !== null ? (status.temperature | number:1) + ' °C' : 'no reading yet' }}
+            </p>
+            <p class="tile-note" ng-if="temperatureStale()">Old reading · {{ status.temperatureTs | date:'HH:mm:ss' }}</p>
+          </div>
+        </div>
+      </div>
+      <div class="locked-bar" ng-if="status.state === 'locked'">
+        <span>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          System locked
+        </span>
+        <button class="btn btn-warning" type="button" ng-click="unlock()">Unlock</button>
+      </div>
+    </section>
+
+    <section class="card grow-1">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12c0-3 1-7 4-7s3 4 0 5"/><path d="M12 12c3 0 7 1 7 4s-4 3-5 0"/><path d="M12 12c0 3-1 7-4 7s-3-4 0-5"/><path d="M12 12c-3 0-7-1-7-4s4-3 5 0"/></svg>
+        <h2>Fan</h2>
+      </div>
+      <div class="fan-buttons">
+        <button class="btn" type="button" ng-repeat="s in [0, 1, 2, 3]" ng-class="{ active: status.fanSpeed === s }"
+                ng-click="setFan(s)" ng-disabled="status.state === 'emergency'">{{ s === 0 ? 'Off' : s }}</button>
+      </div>
+      <p class="note" ng-if="status.state === 'emergency'">Disabled during an emergency.</p>
+    </section>
   </div>
+
+  <section class="card">
+    <div class="card-head">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/><path d="M12 8v8"/></svg>
+        <h2>Temperature</h2>
+      </div>
+      <div class="segmented">
+        <button type="button" ng-repeat="h in chartPeriods" ng-class="{ active: chartHours === h }" ng-click="setChartHours(h)">{{ h }} h</button>
+      </div>
+    </div>
+    <p class="muted" ng-if="chartEmpty">No readings in this period.</p>
+    <div class="chart-box"><canvas id="tempChart" role="img" aria-label="Temperature chart"></canvas></div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+      <h2>Report</h2>
+    </div>
+    <form class="form" ng-submit="loadReport()">
+      <div class="field"><label for="report-from">From</label><input id="report-from" type="datetime-local" ng-model="period.from"></div>
+      <div class="field"><label for="report-to">To</label><input id="report-to" type="datetime-local" ng-model="period.to"></div>
+      <button class="btn btn-primary" type="submit">Generate</button>
+    </form>
+    <div class="quick">
+      <button class="btn" type="button" ng-click="reportToday()">Today</button>
+      <button class="btn" type="button" ng-click="reportLastWeek()">Last 7 days</button>
+    </div>
+    <div ng-if="report">
+      <p class="period">{{ report.from | date:'dd/MM/yyyy HH:mm' }} – {{ report.to | date:'dd/MM/yyyy HH:mm' }}</p>
+      <div class="stats">
+        <div class="stat"><p>Room occupied</p><strong>{{ duration(report.occupiedSeconds) }}</strong></div>
+        <div class="stat"><p>Average temperature</p>
+          <strong>{{ report.temperature.readings > 0 ? (report.temperature.average | number:1) + ' °C' : '–' }}</strong></div>
+        <div class="stat"><p>Maximum</p>
+          <strong>{{ report.temperature.readings > 0 ? (report.temperature.max | number:1) + ' °C' : '–' }}</strong></div>
+        <div class="stat"><p>Emergencies</p><strong>{{ report.emergencies.length }}</strong></div>
+      </div>
+      <div class="chips">
+        <span class="chip chip-{{ type }}" ng-repeat="(type, count) in report.access">{{ accessLabel(type) }} {{ count }}</span>
+      </div>
+      <div ng-if="report.emergencies.length > 0">
+        <p class="subhead">Emergencies in this period</p>
+        <div class="table-box">
+          <table>
+            <tr><th>Start</th><th>Trigger</th><th>Person</th><th>How it ended</th></tr>
+            <tr ng-repeat="e in report.emergencies">
+              <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
+              <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
+              <td>{{ e.person || 'nobody' }}</td>
+              <td ng-class="{ bad: e.outcome === 'ended, not evacuated' }">{{ e.outcome }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="row">
+    <section class="card half">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <h2>Access history</h2>
+      </div>
+      <p class="muted" ng-if="accesses.length === 0">No accesses yet.</p>
+      <div class="table-box" ng-if="accesses.length > 0">
+        <table>
+          <tr><th>Time</th><th>Name</th><th>Card</th><th>What happened</th></tr>
+          <tr ng-repeat="a in accesses">
+            <td>{{ a.ts | date:'dd/MM HH:mm:ss' }}</td>
+            <td ng-class="{ muted: !a.name }">{{ a.name || 'unknown card' }}</td>
+            <td>{{ a.cardId }}</td>
+            <td class="access-{{ a.type }}">{{ accessLabel(a.type) }}</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="card half">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        <h2>Emergency history</h2>
+      </div>
+      <p class="muted" ng-if="emergencies.length === 0">No emergencies yet.</p>
+      <div class="table-box" ng-if="emergencies.length > 0">
+        <table>
+          <tr><th>Start</th><th>End</th><th>Trigger</th><th>Person</th><th>Left at</th><th>Calls</th></tr>
+          <tr ng-repeat="e in emergencies">
+            <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
+            <td>
+              <span class="bad" ng-if="e.inProgress">in progress</span>
+              <span ng-if="!e.inProgress">{{ e.endedAt | date:'HH:mm:ss' }}</span>
+            </td>
+            <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
+            <td>{{ e.person || 'nobody' }}</td>
+            <td>
+              <span ng-if="e.evacuatedAt">{{ e.evacuatedAt | date:'HH:mm:ss' }}</span>
+              <span class="bad" ng-if="!e.evacuatedAt && e.notEvacuated">not evacuated</span>
+              <span ng-if="!e.evacuatedAt && !e.notEvacuated">–</span>
+            </td>
+            <td>
+              <span ng-if="e.calls.length === 0">–</span>
+              <ul class="calls" ng-if="e.calls.length > 0">
+                <li ng-repeat="c in e.calls">{{ c.ts | date:'HH:mm:ss' }} {{ callReason(c.reason) }}</li>
+              </ul>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="row">
+    <section class="card grow-2">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        <h2>Registered cards</h2>
+      </div>
+      <div class="table-box">
+        <table>
+          <tr><th>Card</th><th>Name</th></tr>
+          <tr ng-repeat="u in users"><td>{{ u.card_id }}</td><td>{{ u.name }}</td></tr>
+        </table>
+      </div>
+      <p class="subhead">Add a card</p>
+      <p ng-if="lastUnknown.cardId">
+        <button class="btn btn-suggest" type="button" ng-click="useLastUnknown()">
+          Use last rejected card: {{ lastUnknown.cardId }} ({{ lastUnknown.ts | date:'HH:mm' }})
+        </button>
+      </p>
+      <form class="form" ng-submit="addCard()">
+        <div class="field"><label for="card-id">Card id</label><input id="card-id" ng-model="newCard.card_id"></div>
+        <div class="field"><label for="card-name">Name</label><input id="card-name" ng-model="newCard.name"></div>
+        <button class="btn btn-primary" type="submit">Add</button>
+      </form>
+    </section>
+
+    <section class="card demo grow-1">
+      <div class="card-title">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/></svg>
+        <h2>Demo / tests</h2>
+      </div>
+      <p class="muted">Starts an emergency without heating the sensor.</p>
+      <form class="form column" ng-submit="simulateEmergency()">
+        <div class="field"><label for="simulate-password">Password</label>
+          <input id="simulate-password" type="password" ng-model="password.simulate" autocomplete="current-password"></div>
+        <button class="btn btn-danger-outline" type="submit" ng-disabled="!password.simulate">Simulate emergency</button>
+      </form>
+    </section>
+  </div>
+
+</div>
 </body>
 </html>

@@ -713,3 +713,25 @@ test('GET /api/access/last-unknown with the database down returns 500', async ()
   const res = await request(app).get('/api/access/last-unknown');
   assert.equal(res.status, 500);
 });
+
+// --- Page files ---------------------------------------------------------------------
+
+test('GET / serves the page with its stylesheet', async () => {
+  const { app } = setup({});
+  const res = await request(app).get('/');
+  assert.equal(res.status, 200);
+  assert.match(res.text, /href="\/style.css"/);
+});
+
+test('GET /style.css is served', async () => {
+  const { app } = setup({});
+  const res = await request(app).get('/style.css');
+  assert.equal(res.status, 200);
+  assert.match(res.text, /Michroma/);
+});
+
+test('the title font is served from node_modules, not from the internet', async () => {
+  const { app } = setup({});
+  const res = await request(app).get('/lib/fonts/michroma-latin-400-normal.woff2');
+  assert.equal(res.status, 200);
+});

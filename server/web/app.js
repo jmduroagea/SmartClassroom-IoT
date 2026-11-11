@@ -234,6 +234,7 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
   app.use(express.static(path.join(__dirname, 'public')));
   // AngularJS served locally, not from Google's CDN (no external services).
   app.use('/lib', express.static(path.join(__dirname, 'node_modules', 'angular')));
+  app.use('/lib/fonts', express.static(path.join(__dirname, 'node_modules', '@fontsource', 'michroma', 'files')));
   app.use('/lib/chartjs', express.static(path.join(__dirname, 'node_modules', 'chart.js', 'dist')));
 
   function sendCommand(res, payload) {
