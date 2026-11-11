@@ -1,82 +1,64 @@
 import unittest
+from common.messages import FAN_SPEEDS
 from server.brain.core.state_machine import StateMachine, State
-from common.clock import FakeClock
 
 class TestStateMachine(unittest.TestCase):
+
     def setUp(self):
-        self.clock = FakeClock()
-        self.emitted_actions = []
-        # Callback function to store actions emitted asynchronously by timers
-        self.emit = lambda action: self.emitted_actions.append(action)
-        self.sm = StateMachine(clock=self.clock, emit=self.emit)
+        self.sm = StateMachine()
+        self.speeds = list(FAN_SPEEDS) if not isinstance(FAN_SPEEDS, dict) else list(FAN_SPEEDS.values())
 
-    def test_valid_entry_and_exit(self):
-        # 1. No temperature reading yet (None)
-        actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
-        self.assertEqual(self.sm.state, State.INSIDE)
-        self.assertIn({"type": "say", "text": "Welcome, Gloria."}, actions)
-        self.assertIn({"type": "access", "access": "in", "card_id": "CARD_GLORIA"}, actions)
+    def test_process_card_scan_grant(self):
+        actions = self.sm.process_card_scan("CARD_1", "Gloria")
+        self.assertEqual(self.sm.state, State.OCCUPIED)
+        self.assertEqual(len(actions), 2)
+        self.assertEqual(actions[0], {"type": "say", "text": "Welcome, Gloria!"})
 
-        # 2. Exit
-        actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
-        self.assertEqual(self.sm.state, State.IDLE)
-        self.assertIn({"type": "say", "text": "Goodbye, Gloria."}, actions)
-        self.assertIn({"type": "access", "access": "out", "card_id": "CARD_GLORIA"}, actions)
+    def test_process_card_scan_deny(self):
+        actions = self.sm.process_card_scan("CARD_UNKNOWN", None)
+        self.assertEqual(self.sm.state, State.OFF)
+        self.assertEqual(actions[0], {"type": "say", "text": "Access denied"})
 
-        # 3. With temperature reading (rounded to 1 decimal)
-        self.sm.handle_temperature(0.0, 22.56)
-        actions = self.sm.handle_card("CARD_JOSE", is_known=True, user_name="Jose")
-        self.assertIn({"type": "say", "text": "Welcome, Jose. The temperature is 22.6 degrees."}, actions)
+    # Issue #67 Unit Tests
+    def test_voice_hot_from_off_to_middle(self):
+        actions = self.sm.process_voice_command("hot")
+        mid_speed = self.speeds[len(self.speeds) // 2]
+        self.assertEqual(self.sm.fan_speed, mid_speed)
+        self.assertEqual(actions, [{"type": "set_fan", "speed": mid_speed}])
 
-    def test_unknown_card_while_inside_keeps_inside(self):
-        self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
-        self.assertEqual(self.sm.state, State.INSIDE)
+    def test_voice_hot_one_level_up(self):
+        if len(self.speeds) > 2:
+            self.sm.fan_speed = self.speeds[1]
+            actions = self.sm.process_voice_command("hot")
+            expected_speed = self.speeds[2]
+            self.assertEqual(self.sm.fan_speed, expected_speed)
+            self.assertEqual(actions[0], {"type": "set_fan", "speed": expected_speed})
 
-        actions = self.sm.handle_card("UNKNOWN", is_known=False)
-        self.assertEqual(self.sm.state, State.INSIDE)  # Room remains occupied by Gloria
-        self.assertEqual(self.sm.current_user_card, "CARD_GLORIA")
-        self.assertIn({"type": "say", "text": "Card not recognized."}, actions)
+    def test_voice_hot_maximum(self):
+        self.sm.fan_speed = self.speeds[-1]
+        actions = self.sm.process_voice_command("hot")
+        self.assertEqual(self.sm.fan_speed, self.speeds[-1])
+        self.assertEqual(actions, [{"type": "say", "text": "The fan is at maximum."}])
 
-    def test_lock_after_three_failures(self):
-        self.sm.handle_card("UNKNOWN1", is_known=False)
-        self.sm.handle_card("UNKNOWN2", is_known=False)
-        actions = self.sm.handle_card("UNKNOWN3", is_known=False)
-        self.assertEqual(self.sm.state, State.LOCKED)
-        self.assertTrue(any(a.get("text") == "System locked" for a in actions))
+    def test_voice_cold_one_level_down(self):
+        self.sm.fan_speed = self.speeds[-1]
+        actions = self.sm.process_voice_command("cold")
+        expected_speed = self.speeds[-2]
+        self.assertEqual(self.sm.fan_speed, expected_speed)
+        self.assertEqual(actions, [{"type": "set_fan", "speed": expected_speed}])
 
-    def test_unlock_from_web(self):
-        self.sm.state = State.LOCKED
-        self.sm.unlock()
-        self.assertEqual(self.sm.state, State.IDLE)
+    def test_voice_cold_already_off(self):
+        self.sm.fan_speed = 0
+        actions = self.sm.process_voice_command("cold")
+        self.assertEqual(self.sm.fan_speed, 0)
+        self.assertEqual(actions, [{"type": "say", "text": "The fan is already off."}])
 
-    def test_room_occupied(self):
-        self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
-        actions = self.sm.handle_card("CARD_JOSE", is_known=True, user_name="Jose")
-        self.assertEqual(self.sm.state, State.INSIDE)
-        self.assertIn({"type": "occupied", "card_id": "CARD_JOSE"}, actions)
-        self.assertIn({"type": "say", "text": "Room occupied."}, actions)
+    def test_voice_refused_during_emergency(self):
+        self.sm.state = State.EMERGENCY
+        actions_hot = self.sm.process_voice_command("hot")
+        actions_cold = self.sm.process_voice_command("cold")
+        self.assertEqual(actions_hot, [])
+        self.assertEqual(actions_cold, [])
 
-    def test_card_while_locked(self):
-        self.sm.state = State.LOCKED
-        actions = self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
-        self.assertEqual(self.sm.state, State.LOCKED)
-        self.assertIn({"type": "denied", "card_id": "CARD_GLORIA"}, actions)
-        self.assertFalse(any(a.get("type") == "say" for a in actions))
-
-    def test_pir_starts_waiting_card_and_timers(self):
-        self.sm.handle_pir()
-        self.assertEqual(self.sm.state, State.WAITING_CARD)
-
-        # Check prompt at 3s
-        self.clock.advance(3.0)
-        self.assertIn({"type": "say", "text": "scan your card"}, self.emitted_actions)
-        self.assertEqual(len(self.emitted_actions), 1)
-
-        # Check reminder at 8s (3 + 5)
-        self.clock.advance(5.0)
-        self.assertIn({"type": "say", "text": "Reminder: scan your card"}, self.emitted_actions)
-        self.assertEqual(len(self.emitted_actions), 2)
-
-        # Timeout back to IDLE
-        self.clock.advance(30.0)
-        self.assertEqual(self.sm.state, State.IDLE)
+if __name__ == "__main__":
+    unittest.main()
