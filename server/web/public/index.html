@@ -80,6 +80,46 @@
   </div>
 
   <div class="card">
+    <h2>Report</h2>
+    <form ng-submit="loadReport()">
+      From <input type="datetime-local" ng-model="period.from">
+      To <input type="datetime-local" ng-model="period.to">
+      <button type="submit">Generate</button>
+    </form>
+    <p>
+      <button ng-click="reportToday()">Today</button>
+      <button ng-click="reportLastWeek()">Last 7 days</button>
+    </p>
+    <div ng-if="report">
+      <p><b>Period:</b> {{ report.from | date:'dd/MM/yyyy HH:mm' }} – {{ report.to | date:'dd/MM/yyyy HH:mm' }}</p>
+      <p><b>Room occupied:</b> {{ duration(report.occupiedSeconds) }}</p>
+      <p><b>Temperature:</b>
+        <span ng-if="report.temperature.readings > 0">
+          average {{ report.temperature.average | number:1 }} °C,
+          maximum {{ report.temperature.max | number:1 }} °C
+          ({{ report.temperature.readings }} readings)
+        </span>
+        <span ng-if="report.temperature.readings === 0">no readings</span>
+      </p>
+      <p><b>Access attempts:</b></p>
+      <table>
+        <tr><th ng-repeat="(type, count) in report.access">{{ type }}</th></tr>
+        <tr><td ng-repeat="(type, count) in report.access">{{ count }}</td></tr>
+      </table>
+      <p><b>Emergencies:</b> <span ng-if="report.emergencies.length === 0">none</span></p>
+      <table ng-if="report.emergencies.length > 0">
+        <tr><th>Start</th><th>Trigger</th><th>Person</th><th>How it ended</th></tr>
+        <tr ng-repeat="e in report.emergencies">
+          <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
+          <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
+          <td>{{ e.person || 'nobody' }}</td>
+          <td ng-class="{ 'in-progress': e.outcome === 'ended, not evacuated' }">{{ e.outcome }}</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Registered cards</h2>
     <table>
       <tr><th>Card</th><th>Name</th></tr>
