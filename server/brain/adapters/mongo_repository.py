@@ -1,118 +1,88 @@
 import logging
 from typing import Optional, Dict, Any
+from datetime import datetime
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-from common.config import load_config
+from server.brain.ports.repository import RepositoryPort
 
 logger = logging.getLogger(__name__)
 
-
-class MongoRepository:
-    """Production MongoDB implementation of RepositoryPort."""
-
-    def __init__(self):
-        try:
-            config = load_config()
-            # Support both object attributes and dictionary-like config access
-            uri = getattr(config, "mongo_uri", None) or config.get("MONGO_URI")
-            db_name = getattr(config, "mongo_db", None) or config.get("MONGO_DB", "smartroom")
-
-            self.client = MongoClient(uri)
-            self.db = self.client[db_name]
-
-            self.users_col = self.db["users"]
-            self.access_log_col = self.db["access_log"]
-            self.system_log_col = self.db["system_log"]
-            self.env_log_col = self.db["env_log"]
-            self.fan_log_col = self.db["fan_log"]
-            self.motion_log_col = self.db["motion_log"]
-            self.emergency_log_col = self.db["emergency_log"]
-        except Exception as e:
-            logger.error(f"Failed to initialize MongoRepository: {e}")
-            self.client = None
-            self.db = None
+class MongoRepository(RepositoryPort):
+    """Production MongoDB repository adapter implementing RepositoryPort."""
+    
+    def __init__(self, config):
+        self.client = MongoClient(config.mongo_uri, serverSelectionTimeoutMS=2000)
+        self.db = self.client[config.mongo_db]
+        # Exact collection names expected by web and setup_db.py
+        self.users_col = self.db["users"]
+        self.access_col = self.db["access_log"]
+        self.system_col = self.db["system_log"]
+        self.env_col = self.db["env"]
+        self.fan_col = self.db["fan_log"]
+        self.motion_col = self.db["motion_log"]
 
     def find_user_by_card(self, card_id: str) -> Optional[Dict[str, Any]]:
-        """Finds a user by card ID from MongoDB."""
         try:
-            if self.db is None:
-                return None
             return self.users_col.find_one({"card_id": card_id}, {"_id": 0})
         except PyMongoError as e:
-            logger.error(f"MongoDB error in find_user_by_card: {e}")
+            logger.error(f"MongoDB error in find_user_by_card (T12): {e}")
             return None
 
-    def log_access(self, card_id: str, access_type: str, ts: str) -> None:
-        """Logs access event with 'type' field required by the web interface."""
+    def save_user(self, card_id: str, name: str) -> None:
         try:
-            if self.db is None:
-                return
-            self.access_log_col.insert_one({
+            self.users_col.update_one(
+                {"card_id": card_id},
+                {"$set": {"card_id": card_id, "name": name}},
+                upsert=True
+            )
+        except PyMongoError as e:
+            logger.error(f"MongoDB error in save_user (T12): {e}")
+
+    def log_access(self, card_id: str, access_type: str, name: Optional[str], ts: datetime) -> None:
+        try:
+            self.access_col.insert_one({
                 "card_id": card_id,
                 "type": access_type,
+                "name": name,
                 "ts": ts
             })
         except PyMongoError as e:
-            logger.error(f"MongoDB error in log_access (T12 handled): {e}")
+            logger.error(f"MongoDB error in log_access (T12): {e}")
 
-    def log_system(self, event: str, device: str, detail: str, ts: str) -> None:
-        """Logs system event with exact fields required by the web interface."""
+    def log_system(self, event: str, device: str, detail: str, ts: datetime) -> None:
         try:
-            if self.db is None:
-                return
-            self.system_log_col.insert_one({
+            self.system_col.insert_one({
                 "event": event,
                 "device": device,
                 "detail": detail,
                 "ts": ts
             })
         except PyMongoError as e:
-            logger.error(f"MongoDB error in log_system (T12 handled): {e}")
+            logger.error(f"MongoDB error in log_system (T12): {e}")
 
-    def log_env(self, temperature: float, ts: str) -> None:
-        """Logs environmental temperature readings."""
+    def log_env(self, temp: float, ts: datetime) -> None:
         try:
-            if self.db is None:
-                return
-            self.env_log_col.insert_one({
-                "temperature": temperature,
+            self.env_col.insert_one({
+                "temp": temp,
                 "ts": ts
             })
         except PyMongoError as e:
-            logger.error(f"MongoDB error in log_env (T12 handled): {e}")
+            logger.error(f"MongoDB error in log_env (T12): {e}")
 
-    def log_fan(self, speed: int, ts: str) -> None:
-        """Logs fan speed changes."""
+    def log_fan(self, speed: int, ts: datetime) -> None:
         try:
-            if self.db is None:
-                return
-            self.fan_log_col.insert_one({
+            self.fan_col.insert_one({
                 "speed": speed,
                 "ts": ts
             })
         except PyMongoError as e:
-            logger.error(f"MongoDB error in log_fan (T12 handled): {e}")
+            logger.error(f"MongoDB error in log_fan (T12): {e}")
 
-    def log_motion(self, detected: bool, ts: str) -> None:
-        """Logs PIR motion sensor events."""
+    def log_motion(self, detected: bool, ts: datetime) -> None:
         try:
-            if self.db is None:
-                return
-            self.motion_log_col.insert_one({
+            self.motion_col.insert_one({
                 "detected": detected,
                 "ts": ts
             })
         except PyMongoError as e:
-            logger.error(f"MongoDB error in log_motion (T12 handled): {e}")
-
-    def log_emergency(self, status: str, ts: str) -> None:
-        """Logs emergency state events."""
-        try:
-            if self.db is None:
-                return
-            self.emergency_log_col.insert_one({
-                "status": status,
-                "ts": ts
-            })
-        except PyMongoError as e:
-            logger.error(f"MongoDB error in log_emergency (T12 handled): {e}")
+            logger.error(f"MongoDB error in log_motion (T12): {e}")
