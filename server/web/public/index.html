@@ -17,6 +17,9 @@
     .in-progress { color: #d33; font-weight: bold; }
     .calls { margin: 0; padding-left: 1rem; }
     .chart-box { position: relative; height: 260px; }
+    .access-in { color: #2a7a2a; }
+    .access-denied { color: #d33; }
+    .access-occupied { color: #d68000; }
     .stale { color: #888; }
     .error { color: #d33; }
     button { margin-right: .5rem; padding: .4rem .9rem; }
@@ -129,6 +132,20 @@
     <input ng-model="newCard.card_id" placeholder="Card id">
     <input ng-model="newCard.name" placeholder="Name">
     <button ng-click="addCard()">Add</button>
+  </div>
+
+  <div class="card">
+    <h2>Access history</h2>
+    <p ng-if="accesses.length === 0">No accesses yet.</p>
+    <table ng-if="accesses.length > 0">
+      <tr><th>Time</th><th>Name</th><th>Card</th><th>What happened</th></tr>
+      <tr ng-repeat="a in accesses">
+        <td>{{ a.ts | date:'dd/MM HH:mm:ss' }}</td>
+        <td>{{ a.name || 'unknown card' }}</td>
+        <td>{{ a.cardId }}</td>
+        <td class="access-{{ a.type }}">{{ accessLabel(a.type) }}</td>
+      </tr>
+    </table>
   </div>
 
   <div class="card">

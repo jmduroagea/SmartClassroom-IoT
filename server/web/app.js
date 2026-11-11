@@ -31,6 +31,8 @@ const MAX_REPORT_DAYS = 31;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
 const ACCESS_TYPES = ['in', 'out', 'denied', 'occupied', 'evacuated', 'emergency_end'];
 const MS_PER_SECOND = 1000;
+const DEFAULT_ACCESS_LIMIT = 50;
+const MAX_ACCESS_LIMIT = 200;
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -318,6 +320,25 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
     }
   });
 
+  app.get('/api/access', async (req, res) => {
+    const limit = req.query.limit === undefined ? DEFAULT_ACCESS_LIMIT : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_ACCESS_LIMIT) {
+      return res.status(BAD_REQUEST).json({ error: `limit must be a whole number from 1 to ${MAX_ACCESS_LIMIT}` });
+    }
+    try {
+      const db = await getDb();
+      const entries = await db
+        .collection('access_log')
+        .find({}, { projection: { _id: 0 } })
+        .sort({ ts: -1 })
+        .limit(limit)
+        .toArray();
+      return res.json(entries.map((e) => ({ ts: e.ts, cardId: e.card_id, name: e.name || null, type: e.type })));
+    } catch (err) {
+      return res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
   app.get('/api/users', async (req, res) => {
     try {
       const db = await getDb();
@@ -374,5 +395,5 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
 
 module.exports = {
   createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
-  MAX_REPORT_DAYS, ACCESS_TYPES,
+  MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
 };
