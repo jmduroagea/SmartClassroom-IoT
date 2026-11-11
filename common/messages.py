@@ -23,8 +23,13 @@ CALL_REASONS = ("help", "not_evacuated")
 STATUS_ONLINE = "online"
 STATUS_OFFLINE = "offline"
 
+# Fire alarm: while it is on, the Door Pi says ALARM_TEXT every ALARM_INTERVAL_SECONDS
+ALARM_TEXT = "Fire alert. Please leave the room now."
+ALARM_INTERVAL_SECONDS = 3
+
 # Field types. NULLABLE_STR accepts a text or null (None in Python).
 NULLABLE_STR = (str, type(None))
+NULLABLE_FLOAT = (int, float, type(None))  # a number or null; JSON may send 22 instead of 22.0
 
 # The contract: topic -> {field name: type}
 FIELDS = {
@@ -33,13 +38,14 @@ FIELDS = {
     topics.DOOR_SPEAKER_SAY: {"text": str},
     topics.DOOR_PIR_ENABLE: {"enabled": bool},
     topics.DOOR_LED_CMD: {"color": str, "mode": str},
+    topics.DOOR_ALARM: {"enabled": bool},
     topics.ROOM_ENV: {"ts": str, "temp": float},
     topics.ROOM_VOICE: {"ts": str, "command": str},
     topics.ROOM_MIC_ENABLE: {"enabled": bool},
     topics.ROOM_FAN_CMD: {"speed": int},
     topics.ROOM_FAN_STATE: {"ts": str, "speed": int},
     topics.WEB_CMD: {"action": str},
-    topics.ALERT_UNITS: {"ts": str, "emergency_id": str, "temp": float, "person": NULLABLE_STR},
+    topics.ALERT_UNITS: {"ts": str, "emergency_id": str, "temp": NULLABLE_FLOAT, "person": NULLABLE_STR},
     topics.ALERT_CALL: {"ts": str, "reason": str, "emergency_id": NULLABLE_STR},
 }
 

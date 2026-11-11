@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 
 class State(Enum):
@@ -12,7 +13,10 @@ class State(Enum):
 class StateMachine:
     MAX_FAILED_ATTEMPTS = 3
     TEMP_SAVE_INTERVAL_SECONDS = 10.0
-    ALARM_INTERVAL_SECONDS = 3
+    # How the emergency started: the detector ("rate") or the web button ("simulated")
+    EMERGENCY_TRIGGERS = ("rate", "simulated")
+    # emergency_id, from the clock: one emergency at a time, so seconds are enough
+    EMERGENCY_ID_FORMAT = "em-%Y%m%dT%H%M%S"
 
     TIMER_PROMPT_DELAY = 3.0
     TIMER_REMINDER_DELAY = 5.0
@@ -24,6 +28,9 @@ class StateMachine:
         self.state = State.IDLE
         self.failed_attempts = 0
         self.current_user_card = None
+        self.current_user_name = None
+        self.emergency_id = None
+        self.emergency_trigger = None
         self.last_temp_save_time = 0.0
         self.last_known_temp = None
         self.current_timer = None
@@ -101,6 +108,7 @@ class StateMachine:
         if self.state in (State.WAITING_CARD, State.IDLE):
             self.state = State.INSIDE
             self.current_user_card = card_id
+            self.current_user_name = user_name
             name_str = user_name or "User"
 
             if self.last_known_temp is not None:
@@ -119,6 +127,7 @@ class StateMachine:
             if self.current_user_card == card_id:
                 self.state = State.IDLE
                 self.current_user_card = None
+                self.current_user_name = None
                 name_str = user_name or "User"
                 actions.append({"type": "say", "text": f"Goodbye, {name_str}."})
                 actions.append({"type": "access", "access": "out", "card_id": card_id})
@@ -142,21 +151,24 @@ class StateMachine:
             actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
         return actions
 
-    def handle_emergency(self, event: dict = None) -> list:
-        """Triggers emergency mode."""
-        self.state = State.EMERGENCY
+    def handle_emergency(self, trigger: str, temp: Optional[float] = None) -> list:
+        """Declares the emergency from any state. A second one while active is ignored."""
+        if trigger not in self.EMERGENCY_TRIGGERS:
+            raise ValueError(f"unknown emergency trigger {trigger!r}")
+        if self.state == State.EMERGENCY:
+            return []
         self._cancel_timer()
+        person = self.current_user_name if self.state == State.INSIDE else None
+        self.state = State.EMERGENCY
+        self.emergency_id = self.clock.now().strftime(self.EMERGENCY_ID_FORMAT)
+        self.emergency_trigger = trigger
         return [
-            {"type": "set_fan", "speed": 0, "locked": True},
+            {"type": "set_fan", "speed": 0},
             {"type": "set_led", "color": "red", "mode": "blink"},
-            {"type": "set_alarm", "interval_seconds": self.ALARM_INTERVAL_SECONDS},
+            {"type": "set_alarm", "enabled": True},
             {"type": "set_mic", "enabled": True},
             {"type": "set_pir", "enabled": False},
-            {
-                "type": "publish",
-                "topic": "glo/alert/units",
-                "payload": {"status": "EMERGENCY_TRIGGERED"}
-            }
+            {"type": "alert_units", "emergency_id": self.emergency_id, "temp": temp, "person": person},
         ]
 
     def handle_fan_command(self, command: dict) -> list:
