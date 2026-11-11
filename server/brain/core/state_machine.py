@@ -27,36 +27,6 @@ class StateMachine:
         actions = []
 
         if self.state in (State.OFF, State.IDLE):
-cat << 'EOF' > server/brain/core/state_machine.py
-import logging
-from typing import Optional, Union
-from common.messages import FAN_SPEEDS
-
-logger = logging.getLogger(__name__)
-
-class State:
-    IDLE = "IDLE"
-    WAITING_CARD = "WAITING_CARD"
-    INSIDE = "INSIDE"
-    LOCKED = "LOCKED"
-    OFF = "OFF"
-    OCCUPIED = "OCCUPIED"
-    EMERGENCY = "EMERGENCY"
-
-class StateMachine:
-    """Pure domain state machine supporting Use Case 1, Emergency, and Fan Control (#67)."""
-
-    def __init__(self, clock=None, emit=None):
-        self.clock = clock
-        self.emit = emit
-        self.state = State.OFF
-        self.occupied_user = None
-        self.fan_speed = 0
-
-    def process_card_scan(self, card_id: str, user_name: Optional[str] = None) -> list[dict]:
-        actions = []
-
-        if self.state in (State.OFF, State.IDLE):
             if user_name:
                 self.state = State.OCCUPIED if self.state == State.OFF else State.INSIDE
                 self.occupied_user = user_name
