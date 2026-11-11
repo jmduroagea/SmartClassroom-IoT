@@ -13,6 +13,8 @@
     .emergency h2 { margin-top: 0; }
     .emergency .alarm { background: #fff; color: #d33; font-weight: bold; padding: .2rem .5rem; border-radius: 4px; }
     .demo { border-style: dashed; }
+    .in-progress { color: #d33; font-weight: bold; }
+    .calls { margin: 0; padding-left: 1rem; }
     .stale { color: #888; }
     .error { color: #d33; }
     button { margin-right: .5rem; padding: .4rem .9rem; }
@@ -76,6 +78,34 @@
     <input ng-model="newCard.card_id" placeholder="Card id">
     <input ng-model="newCard.name" placeholder="Name">
     <button ng-click="addCard()">Add</button>
+  </div>
+
+  <div class="card">
+    <h2>Emergency history</h2>
+    <p ng-if="emergencies.length === 0">No emergencies yet.</p>
+    <table ng-if="emergencies.length > 0">
+      <tr><th>Start</th><th>End</th><th>Trigger</th><th>Person inside</th><th>Left at</th><th>Calls</th></tr>
+      <tr ng-repeat="e in emergencies">
+        <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
+        <td>
+          <span ng-if="e.inProgress" class="in-progress">in progress</span>
+          <span ng-if="!e.inProgress">{{ e.endedAt | date:'HH:mm:ss' }}</span>
+        </td>
+        <td>{{ e.trigger === 'simulated' ? 'simulated' : (e.triggerTemp | number:1) + ' °C' }}</td>
+        <td>{{ e.person || 'nobody' }}</td>
+        <td>
+          <span ng-if="e.evacuatedAt">{{ e.evacuatedAt | date:'HH:mm:ss' }}</span>
+          <span ng-if="!e.evacuatedAt && e.notEvacuated" class="in-progress">not evacuated</span>
+          <span ng-if="!e.evacuatedAt && !e.notEvacuated">-</span>
+        </td>
+        <td>
+          <span ng-if="e.calls.length === 0">-</span>
+          <ul class="calls" ng-if="e.calls.length > 0">
+            <li ng-repeat="c in e.calls">{{ c.ts | date:'HH:mm:ss' }} {{ callReason(c.reason) }}</li>
+          </ul>
+        </td>
+      </tr>
+    </table>
   </div>
 
   <div class="card demo">

@@ -18,6 +18,8 @@ const WEB_CMD_TOPIC = 'glo/web/cmd';
 // or the brain closing the exit when an emergency ends without evacuation.
 const EXIT_TYPES = ['out', 'evacuated', 'emergency_end'];
 const HELP_REASON = 'help';
+// How many past emergencies the history shows (decision 1A).
+const HISTORY_LIMIT = 20;
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -62,6 +64,22 @@ function summarizeEmergency(doc) {
     evacuatedAt: doc.evacuated_at || null,
     notEvacuated: Boolean(doc.not_evacuated_alert),
     helpRequested: calls.some((call) => call.reason === HELP_REASON),
+  };
+}
+
+// One row of the emergency history. The readings are left out: they are only
+// for the per-emergency chart, which is an extra.
+function historyEntry(doc) {
+  return {
+    startedAt: doc.started_at,
+    endedAt: doc.ended_at || null,
+    inProgress: !doc.ended_at,
+    trigger: doc.trigger,
+    triggerTemp: doc.trigger_temp,
+    person: doc.person ? doc.person.name : null,
+    evacuatedAt: doc.evacuated_at || null,
+    notEvacuated: Boolean(doc.not_evacuated_alert),
+    calls: (doc.calls || []).map((call) => ({ ts: call.ts, reason: call.reason })),
   };
 }
 
@@ -133,6 +151,21 @@ function createApp({ broker, getDb, webPassword }) {
     }
   });
 
+  app.get('/api/emergencies', async (req, res) => {
+    try {
+      const db = await getDb();
+      const docs = await db
+        .collection('emergencies')
+        .find({}, { projection: { readings: 0 } })
+        .sort({ started_at: -1 })
+        .limit(HISTORY_LIMIT)
+        .toArray();
+      res.json(docs.map(historyEntry));
+    } catch (err) {
+      res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
   app.get('/api/users', async (req, res) => {
     try {
       const db = await getDb();
@@ -187,4 +220,4 @@ function createApp({ broker, getDb, webPassword }) {
   return app;
 }
 
-module.exports = { createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS };
+module.exports = { createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT };

@@ -5,6 +5,7 @@ var STALE_SECONDS = 30;
 angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, $interval) {
   $scope.status = { state: 'normal', devices: {}, temperature: null, fanSpeed: 0, emergency: null };
   $scope.users = [];
+  $scope.emergencies = [];
   $scope.newCard = {};
   $scope.error = null;
 
@@ -18,7 +19,13 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
       $scope.error = null;
     }, fail);
     $http.get('/api/users').then(function (res) { $scope.users = res.data; }, fail);
+    $http.get('/api/emergencies').then(function (res) { $scope.emergencies = res.data; }, fail);
   }
+
+  // Readable text for the reason of a call: 'not_evacuated' -> 'not evacuated'.
+  $scope.callReason = function (reason) {
+    return String(reason).replace(/_/g, ' ');
+  };
 
   // True when the last temperature reading is too old to trust.
   $scope.temperatureStale = function () {
