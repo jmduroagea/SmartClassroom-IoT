@@ -28,3 +28,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: npm ci
       - run: npm test --if-present
+
+  scenarios:
+    runs-on: ubuntu-latest      # not inside a container: it starts containers itself
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/scenarios

@@ -74,8 +74,9 @@ services:
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB: smartroom
       PORT: "3001"
-      # No default: the web refuses to start without a password (put it in .env)
-      WEB_PASSWORD: ${WEB_PASSWORD:?set WEB_PASSWORD in .env (see .env.example)}
+      # Simulation only: a known password, so one command starts everything and the
+      # tests can use it. The real server (config.js) still refuses to start without one.
+      WEB_PASSWORD: ${WEB_PASSWORD:-simulation}
     ports:
       - "127.0.0.1:3001:3001"                  # open http://localhost:3001
     networks: [iot, db, edge]
