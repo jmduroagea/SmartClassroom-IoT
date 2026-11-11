@@ -20,6 +20,12 @@ const EXIT_TYPES = ['out', 'evacuated', 'emergency_end'];
 const HELP_REASON = 'help';
 // How many past emergencies the history shows (decision 1A).
 const HISTORY_LIMIT = 20;
+// Temperature chart (decisions 1A, 2A): one average per minute, 1 to 24 hours back.
+const MIN_HOURS = 1;
+const MAX_HOURS = 24;
+const DEFAULT_HOURS = 24;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MINUTE_FORMAT = '%Y-%m-%dT%H:%M:00Z';
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -83,6 +89,29 @@ function historyEntry(doc) {
   };
 }
 
+// Parses ?hours= : missing gives the default, anything that is not a whole
+// number between MIN_HOURS and MAX_HOURS gives null.
+function parseHours(value) {
+  if (value === undefined) {
+    return DEFAULT_HOURS;
+  }
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+  const hours = Number(value);
+  return hours >= MIN_HOURS && hours <= MAX_HOURS ? hours : null;
+}
+
+// The average temperature of each minute since a moment, oldest first.
+// MongoDB does the work, so only one point per minute leaves the database.
+function temperatureHistory(db, since) {
+  return db.collection('env').aggregate([
+    { $match: { ts: { $gte: since } } },
+    { $group: { _id: { $dateToString: { format: MINUTE_FORMAT, date: '$ts' } }, temp: { $avg: '$temp' } } },
+    { $sort: { _id: 1 } },
+  ]).toArray();
+}
+
 // The emergency wins over the lock: an emergency lifts the lock (specification v4).
 function systemState(emergency, lockEvent) {
   if (emergency) {
@@ -99,13 +128,15 @@ function systemState(emergency, lockEvent) {
  * @param {{connected: boolean, publish: Function}} deps.broker  MQTT client (or a fake)
  * @param {() => Promise<object>} deps.getDb  returns the MongoDB database (or a fake)
  * @param {string} deps.webPassword  password for emergency commands
+ * @param {() => Date} [deps.now]  current time (a fixed one in the tests)
  */
-function createApp({ broker, getDb, webPassword }) {
+function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
   const app = express();
   app.use(express.json());
   app.use(express.static(path.join(__dirname, 'public')));
   // AngularJS served locally, not from Google's CDN (no external services).
   app.use('/lib', express.static(path.join(__dirname, 'node_modules', 'angular')));
+  app.use('/lib/chartjs', express.static(path.join(__dirname, 'node_modules', 'chart.js', 'dist')));
 
   function sendCommand(res, payload) {
     if (!broker.connected) {
@@ -166,6 +197,21 @@ function createApp({ broker, getDb, webPassword }) {
     }
   });
 
+  app.get('/api/env', async (req, res) => {
+    const hours = parseHours(req.query.hours);
+    if (hours === null) {
+      return res.status(BAD_REQUEST).json({ error: `hours must be a whole number from ${MIN_HOURS} to ${MAX_HOURS}` });
+    }
+    try {
+      const db = await getDb();
+      const since = new Date(now().getTime() - hours * MS_PER_HOUR);
+      const points = await temperatureHistory(db, since);
+      return res.json(points.map((point) => ({ ts: point._id, temp: Math.round(point.temp * 10) / 10 })));
+    } catch (err) {
+      return res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
   app.get('/api/users', async (req, res) => {
     try {
       const db = await getDb();
@@ -220,4 +266,6 @@ function createApp({ broker, getDb, webPassword }) {
   return app;
 }
 
-module.exports = { createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT };
+module.exports = {
+  createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
+};
