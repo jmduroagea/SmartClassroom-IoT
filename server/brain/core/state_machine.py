@@ -94,15 +94,15 @@ class StateMachine:
             self.failed_attempts += 1
             actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
             actions.append({"type": "access", "access": "denied", "card_id": card_id, "name": None})
-            actions.append({
-                    "type": "system_event", "event": "locked", "device": "door",
-                    "detail": f"{self.failed_attempts} unknown cards",
-                })
             actions.append({"type": "say", "text": "Card not recognized."})
 
             if self.failed_attempts >= self.MAX_FAILED_ATTEMPTS:
                 self.state = State.LOCKED
                 actions.append({"type": "say", "text": "System locked"})
+                actions.append({
+                    "type": "system_event", "event": "locked", "device": "door",
+                    "detail": f"{self.failed_attempts} unknown cards",
+                })
             elif self.state == State.WAITING_CARD:
                 self.state = State.IDLE
 

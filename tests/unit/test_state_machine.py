@@ -86,8 +86,10 @@ class TestStateMachine(unittest.TestCase):
         self.assertIn({"type": "access", "access": "denied", "card_id": "UNKNOWN", "name": None}, actions)
 
     def test_locking_and_unlocking_are_system_events(self):
-        for attempt in range(StateMachine.MAX_FAILED_ATTEMPTS):
+        for attempt in range(StateMachine.MAX_FAILED_ATTEMPTS - 1):
             actions = self.sm.handle_card(f"UNKNOWN{attempt}", is_known=False)
+            self.assertFalse(any(a["type"] == "system_event" for a in actions))
+        actions = self.sm.handle_card("UNKNOWN_LAST", is_known=False)
         self.assertIn({"type": "system_event", "event": "locked", "device": "door",
                        "detail": "3 unknown cards"}, actions)
         actions = self.sm.unlock()
