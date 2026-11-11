@@ -99,8 +99,8 @@ copied to each Pi. The simulation lives in `compose.yaml` (repository root) and 
 
 - Every machine uses the **same versions**: the Pis, the simulation and CI. Python 3.9
   (Debian bullseye, as on the Pis), Node.js 20 and Mosquitto 2.0.
-- Python versions are pinned with `==` in `requirements-brain.txt` (Server Pi) and
-  `requirements-sensors.txt` (Door and Room Pis); CI installs `requirements-dev.txt`. Node versions are pinned
+- Python versions are pinned with `==` in `requirements-brain.txt` (Server Pi),
+  `requirements-door.txt` and `requirements-room.txt`; CI installs `requirements-dev.txt`. Node versions are pinned
   in `server/web/package-lock.json` (always `npm ci`, never `npm install`, to deploy).
 - All files use Linux line endings (`.gitattributes`), because scripts run on the Pis.
 
@@ -259,27 +259,39 @@ The check is required by the `main` ruleset, so a pull request with failing chec
 merged.
 
 There is **no continuous deployment**: GitHub cannot reach the Pis on the university network.
-Deployment is one manual command (below).
+Deployment is manual (below).
 
 ---
 
 ## Deployment to the Raspberry Pis
 
-- Three Pis 3 B+ with Raspbian 11 (32-bit), each prepared once with its setup script in
-  `deploy/` (door, room or server). They reach the internet and etu-web2 directly (no proxy,
-  no tunnel).
+- Three Pis 3 B+ with Raspbian 11 (32-bit). They reach the internet and etu-web2 directly
+  (no proxy, no tunnel).
+
+  - **Pi 1** (10.12.220.101): Server (broker, brain and web), `deploy/setup_server.sh`
+  - **Pi 6** (10.12.220.106): Door, `deploy/setup_door.sh 10.12.220.101`
+  - **Pi 26** (10.12.220.126): Room, `deploy/setup_room.sh 10.12.220.101`
+
 - We reach them by **SSH from the university computer** (the university network does not
   accept our laptops). There is no VPN: etu-web2 is only reachable from the university, so
   tests and development always use the simulation's own MongoDB.
 - **Running a script on a Pi from Windows:** copy it with `scp` and remove the Windows line
-  endings on the Pi before running it (piping it from PowerShell adds a `\r` that breaks bash):
-  `ssh pi@IP "tr -d '\r' < /tmp/script.sh > /tmp/clean.sh && bash /tmp/clean.sh"`
-- **Getting the code:** each Pi clones the repository and pulls.
-- **Deploying:** `deploy/deploy.sh <door|room|server>` updates the code, runs the hardware check
-  and restarts the systemd service.
-- **Configuration:** each Pi has a `.env` (never committed) with its settings: the Server Pi's IP
-  as `MQTT_HOST` on the Door and Room Pis, the MongoDB URI on the Server Pi. The IPs come from DHCP and
-  could change, so they are only ever written there.
+  endings on the Pi before running it (piping it from PowerShell adds a `\r` that breaks bash).
+  `-t` keeps the terminal, so the Server script can ask for the password:
+  `ssh -t pi@IP "tr -d '\r' < /tmp/script.sh > /tmp/clean.sh && bash /tmp/clean.sh ARGUMENTS"`
+- **Setting up a Pi:** run its setup script once. It installs the system packages, clones the
+  repository, installs the pinned Python packages in `~/smartroom-venv`, writes the `.env` and
+  reboots. The Door and Room scripts take the Server Pi's IP as argument; the Server script asks
+  for the web password. Running a script again skips what is already done.
+- **Running:** `git pull`, then `./deploy/run.sh <door|room|brain|web>` in a terminal on the Pi
+  (the Server Pi needs two terminals: brain and web). It loads the Pi's `.env` and starts the
+  program; Ctrl+C stops it. There are no services: if a program or the SSH session stops, start
+  it again.
+- **Configuration:** each Pi has a `.env` (never committed), written by its setup script: the
+  Server Pi's IP as `MQTT_HOST` on the Door and Room Pis; the MongoDB URI and the web password on
+  the Server Pi. The programs only read environment variables, so always start them with
+  `run.sh`.
+- **Never deploy with `compose.yaml`:** it is the simulation, and its web password is public.
 - **Time at the university is for integration only.** Development happens at home with the
   simulation. Test first what cannot be simulated: RFID, Vosk on the Pi 3, the fan, the audio.
 
