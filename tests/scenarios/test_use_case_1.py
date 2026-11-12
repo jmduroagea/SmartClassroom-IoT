@@ -1,12 +1,17 @@
 """Use case 1, end to end: access control, fan and voice assistant.
 
-The test plays the Door Pi and the Room Pi over MQTT and a user on the web.
+The test plays the Door Pi over MQTT and a user on the web. The Room Pi is its
+own container (fake hardware on sim/ topics, see the README): the test sets its
+temperature, speaks to its microphone and checks that its fan moved.
 `sim` is a clean system (see conftest.py). setup_db.py created the test users.
 """
+
+import time
 
 import pytest
 
 from common import messages, topics
+from tests.scenarios import simulation
 from tests.scenarios.simulation import BASE_TEMPERATURE, now_ts
 
 GLORIA = "CARD_GLORIA"
@@ -20,6 +25,12 @@ FAN_OFF = 0
 WARMER_TEMPERATURE = 25.0
 REMINDER_TIMEOUT = 15  # the prompt comes 3 s after motion, the reminder 5 s later
 WEB_PASSWORD = "simulation"  # the default in compose.yaml
+
+SIM_TEMP = "sim/room/temp"
+SIM_VOICE = "sim/room/voice"
+SIM_FAN = "sim/room/fan"
+SPEAK_ATTEMPTS = 3
+SPEAK_WAIT = 2.0  # seconds for the Room Pi to turn a phrase into a command
 
 
 def scan(sim, card_id):
@@ -50,10 +61,25 @@ def leave(sim, card_id):
     sim.forget_messages()
 
 
-def confirm_fan(sim, speed):
-    """Play the Room Pi: confirm the fan moved, and wait until the web shows it."""
-    sim.publish(topics.ROOM_FAN_STATE, ts=now_ts(), speed=speed)
+def fan_moved(sim, speed):
+    """Wait until the Room Pi's fan moved to the speed and the web shows it."""
+    sim.wait_for_message(SIM_FAN, lambda report: report["speed"] == speed)
     sim.wait_for_status(lambda status: status["fanSpeed"] == speed)
+
+
+def speak(sim, phrase):
+    """Say a phrase to the Room Pi's microphone and wait until it sends the command.
+
+    The order to switch the microphone on and the phrase reach the Room Pi on two
+    different connections, so the phrase could arrive first and be ignored: it is
+    said again, a few times at most."""
+    for _ in range(SPEAK_ATTEMPTS):
+        sim.publish_sim(SIM_VOICE, text=phrase)
+        try:
+            return sim.wait_for_message(topics.ROOM_VOICE, timeout=SPEAK_WAIT)
+        except AssertionError:
+            continue
+    raise AssertionError(f"the Room Pi never sent a command for {phrase!r}")
 
 
 # --- Access control -------------------------------------------------------------
@@ -139,15 +165,23 @@ def test_card_registered_from_web_can_enter(sim):
 # --- Fan --------------------------------------------------------------------------
 
 
-def test_fan_from_web_shows_only_the_confirmed_speed(sim):
+def test_fan_from_web_moves_the_fan_and_the_web_shows_it(sim):
     status_code, _body = sim.post("/api/fan", {"speed": 3})
     assert status_code == 200
 
-    # The order reaches the Room Pi...
     sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == 3)
-    # ...but the web keeps the old speed until the Room Pi confirms it moved.
+    fan_moved(sim, 3)
+
+
+def test_web_keeps_the_old_speed_until_the_room_pi_confirms(sim):
+    simulation.kill("room")  # nobody will confirm the order
+
+    status_code, _body = sim.post("/api/fan", {"speed": 3})
+    assert status_code == 200
+
+    sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == 3)
+    time.sleep(simulation.QUIET_TIME)
     assert sim.status()["fanSpeed"] == 0
-    confirm_fan(sim, 3)
 
 
 def test_every_fan_level_from_web_is_ordered_and_confirmed(sim):
@@ -157,7 +191,7 @@ def test_every_fan_level_from_web_is_ordered_and_confirmed(sim):
         status_code, _body = sim.post("/api/fan", {"speed": level})
         assert status_code == 200
         sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order, level=level: order["speed"] == level)
-        confirm_fan(sim, level)
+        fan_moved(sim, level)
 
 
 def test_fan_stops_when_person_leaves(sim):
@@ -166,7 +200,7 @@ def test_fan_stops_when_person_leaves(sim):
     status_code, _body = sim.post("/api/fan", {"speed": speed})
     assert status_code == 200
     sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == speed)
-    confirm_fan(sim, speed)
+    fan_moved(sim, speed)
     sim.forget_messages()
 
     scan(sim, GLORIA)
@@ -176,10 +210,9 @@ def test_fan_stops_when_person_leaves(sim):
 
 def test_web_shows_when_room_pi_goes_offline(sim):
     """T5: the Room Pi's last will says "offline", and the web shows it."""
-    sim.publish_raw(topics.ROOM_STATUS, messages.STATUS_ONLINE)
     sim.wait_for_status(lambda status: status["devices"]["room"] == messages.STATUS_ONLINE)
 
-    sim.publish_raw(topics.ROOM_STATUS, messages.STATUS_OFFLINE)
+    simulation.kill("room")
 
     sim.wait_for_status(lambda status: status["devices"]["room"] == messages.STATUS_OFFLINE)
 
@@ -199,16 +232,17 @@ def test_web_rejects_invalid_fan_speed(sim, body):
 def test_voice_hot_turns_fan_on_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
-    sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="hot")
+    assert speak(sim, "ok computer i'm hot")["command"] == "hot"
 
     sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == FAN_SPEED_ON_HOT)
+    fan_moved(sim, FAN_SPEED_ON_HOT)
 
 
 @pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_is_answered_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
-    sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="temp")
+    speak(sim, "ok computer what's the temperature")
 
     assert str(round(BASE_TEMPERATURE)) in sim.said(containing="degrees")
 
@@ -216,9 +250,10 @@ def test_voice_temperature_is_answered_when_inside(sim):
 @pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_uses_the_latest_reading(sim):
     enter(sim, GLORIA, "Gloria")
-    sim.publish(topics.ROOM_ENV, ts=now_ts(), temp=WARMER_TEMPERATURE)
+    sim.publish_sim(SIM_TEMP, temp=WARMER_TEMPERATURE)
+    sim.wait_for_message(topics.ROOM_ENV, lambda reading: reading["temp"] == WARMER_TEMPERATURE)
 
-    sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="temp")
+    speak(sim, "ok computer what's the temperature")
 
     sim.said(containing=f"{round(WARMER_TEMPERATURE)} degrees")
 
@@ -226,12 +261,15 @@ def test_voice_temperature_uses_the_latest_reading(sim):
 def test_voice_help_calls_the_emergency_centre(sim):
     enter(sim, GLORIA, "Gloria")
 
-    sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="help")
+    speak(sim, "ok computer help")
 
     assert sim.wait_for_message(topics.ALERT_CALL)["reason"] == "help"
     sim.said(containing="Emergency services")
 
 
+# The next two publish the command straight to the brain, to check that the brain
+# ignores it. That the Room Pi does not even send it with the microphone off is
+# covered by its unit tests.
 def test_voice_is_ignored_when_room_is_empty(sim):
     sim.publish(topics.ROOM_VOICE, ts=now_ts(), command="hot")
 

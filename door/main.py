@@ -20,11 +20,12 @@ from common.paho_bus import PahoBus
 from door.adapters.leds import GpioDoorLight
 from door.adapters.pir import GpioMotionSensor
 from door.adapters.rfid import SerialCardReader
+from common.sim_link import SimLink
 from door.adapters.simulated import (
+    SIM_CLIENT_ID,
     KeyboardInput,
     PrintLight,
     PrintSpeaker,
-    SimLink,
     TopicInputs,
     TopicLight,
     TopicSpeaker,
@@ -60,7 +61,7 @@ def build_hardware(simulate: bool, config: Config):
 
 def build_sim_topics_hardware(config: Config):
     """Fakes driven by the scenario tests: they share one connection for the sim/ topics."""
-    link = SimLink(config.mqtt_host, config.mqtt_port)
+    link = SimLink(config.mqtt_host, config.mqtt_port, SIM_CLIENT_ID)
     return TopicInputs(link), TopicLight(link), TopicSpeaker(link)
 
 

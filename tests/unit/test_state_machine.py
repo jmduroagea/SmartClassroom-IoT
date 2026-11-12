@@ -147,6 +147,25 @@ class TestStateMachine(unittest.TestCase):
         self.assertEqual(self.sm.fan_speed, 0)
         self.assertEqual(actions, [{"type": "say", "text": "The fan is already off."}])
 
+    def test_voice_off_stops_the_fan_from_any_speed(self):
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[2]
+        actions = self.sm.handle_voice_command("off")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[0])
+        self.assertEqual(actions, [{"type": "set_fan", "speed": FAN_SPEEDS[0]}])
+
+    def test_voice_off_when_already_off(self):
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[0]
+        actions = self.sm.handle_voice_command("off")
+        self.assertEqual(actions, [{"type": "say", "text": "The fan is already off."}])
+
+    def test_voice_off_is_ignored_when_nobody_is_inside(self):
+        self.sm.state = State.IDLE
+        self.sm.fan_speed = FAN_SPEEDS[2]
+        self.assertEqual(self.sm.handle_voice_command("off"), [])
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[2])
+
     def test_voice_refused_during_emergency(self):
         self.sm.state = State.EMERGENCY
         actions = self.sm.handle_voice_command("hot")

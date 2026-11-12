@@ -285,7 +285,7 @@ class StateMachine:
         return actions
 
     def handle_voice_command(self, command: str) -> list:
-        """Handle voice commands ('hot', 'cold', 'help') in INSIDE, and 'help' in EMERGENCY."""
+        """Handle voice commands ('hot', 'cold', 'off', 'help') in INSIDE, and 'help' in EMERGENCY."""
         if self.state not in (State.INSIDE, State.EMERGENCY):
             return []
 
@@ -330,6 +330,13 @@ class StateMachine:
             else:
                 current_index = speeds.index(self.fan_speed)
                 self.fan_speed = speeds[current_index - 1]
+                actions.append({"type": "set_fan", "speed": self.fan_speed})
+
+        elif text == "off":
+            if self.fan_speed == 0:
+                actions.append({"type": "say", "text": "The fan is already off."})
+            else:
+                self.fan_speed = speeds[0]
                 actions.append({"type": "set_fan", "speed": self.fan_speed})
 
         return actions

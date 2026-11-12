@@ -9,6 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from common import topics
+from common.messages import ALARM_TEXT
+from room.core.voice import WAKE_WORDS
 from common.bus import FakeBus
 from datetime import timedelta
 
@@ -360,3 +362,41 @@ def test_help_voice_command_publishes_alert_call_in_inside_and_emergency(brain):
     assert len(calls) == 2
     assert calls[1]["reason"] == "help"
     assert calls[1]["emergency_id"] == brain.service.machine.emergency_id
+
+
+def test_no_spoken_sentence_contains_wake_word(brain):
+    """Every sentence the brain or alarm can speak must be free of WAKE_WORDS (#68)."""
+    # 1. PIR prompt (3 s) + reminder (5 s) + timeout (30 s)
+    send(brain, topics.DOOR_MOTION, ts=TS)
+    brain.clock.advance(3.0)
+    brain.clock.advance(5.0)
+    brain.clock.advance(30.0)
+
+    # 2. Entry without temperature reading + occupied room + normal exit
+    scan(brain, GLORIA["card_id"])
+    brain.repo.save_user("OTHER_KNOWN_CARD", "Other")
+    scan(brain, "OTHER_KNOWN_CARD")
+    scan(brain, GLORIA["card_id"])
+
+    # 3. Entry with temperature reading + fan limits + "help" inside + emergency + "help"
+    send(brain, topics.ROOM_ENV, ts=TS, temp=22.4)
+    scan(brain, GLORIA["card_id"])
+    for _ in range(4):
+        send(brain, topics.ROOM_VOICE, ts=TS, command="hot")
+    for _ in range(4):
+        send(brain, topics.ROOM_VOICE, ts=TS, command="cold")
+    send(brain, topics.ROOM_VOICE, ts=TS, command="help")
+    send(brain, topics.WEB_CMD, ts=TS, action="simulate_emergency")
+    send(brain, topics.ROOM_VOICE, ts=TS, command="help")
+    send(brain, topics.WEB_CMD, ts=TS, action="end_emergency")
+
+    # 4. Unknown card x3 -> "Card not recognized." + "System locked"
+    for idx in range(3):
+        scan(brain, f"UNKNOWN_{idx}")
+
+    sentences = [*said(brain), ALARM_TEXT]
+    assert len(set(said(brain))) == 11
+    for sentence in sentences:
+        lower = sentence.lower()
+        for wake in WAKE_WORDS:
+            assert wake not in lower, f"Sentence {sentence!r} contains wake word {wake!r}"

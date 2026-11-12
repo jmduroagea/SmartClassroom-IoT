@@ -18,7 +18,7 @@ from common import topics
 FAN_SPEEDS = (0, 1, 2, 3)  # 0 = stopped, 1-3 = speed levels
 LED_COLORS = ("green", "red")
 LED_MODES = ("pulse", "blink", "off")  # pulse = on for 3 s, then the Door Pi switches it off
-VOICE_COMMANDS = ("hot", "cold", "temp", "help")
+VOICE_COMMANDS = ("hot", "cold", "temp", "help", "off")
 CALL_REASONS = ("help", "not_evacuated")
 STATUS_ONLINE = "online"
 STATUS_OFFLINE = "offline"

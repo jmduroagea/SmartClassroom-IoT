@@ -2,11 +2,10 @@
 and of how door/main.py chooses the hardware. The sim/ topic fakes use a fake
 paho client, so no broker is needed."""
 
-import json
 import threading
-from types import SimpleNamespace
 
 from common.config import load_config
+from common.sim_link import SimLink
 from door.adapters.simulated import (
     SIM_CARD,
     SIM_LED,
@@ -15,12 +14,12 @@ from door.adapters.simulated import (
     KeyboardInput,
     PrintLight,
     PrintSpeaker,
-    SimLink,
     TopicInputs,
     TopicLight,
     TopicSpeaker,
 )
 from door.main import build_hardware, build_sim_topics_hardware
+from tests.unit.fake_paho import FakePahoClient
 
 
 def test_keyboard_lines_are_cards_and_m_is_motion():
@@ -53,40 +52,9 @@ def test_simulate_chooses_the_simulated_hardware():
 
 # --- Driven by sim/ topics (Docker simulation) ---------------------------------------
 
-class FakePahoClient:
-    """Records what the link does with paho, and lets the test deliver messages."""
-
-    def __init__(self):
-        self.subscribed = []
-        self.published = []
-        self.connected_to = None
-        self.on_connect = self.on_message = None
-
-    def connect_async(self, host, port):
-        self.connected_to = (host, port)
-
-    def loop_start(self):
-        self.on_connect(self, None, None, 0, None)
-
-    def loop_stop(self):
-        pass
-
-    def disconnect(self):
-        pass
-
-    def subscribe(self, topic, qos):
-        self.subscribed.append(topic)
-
-    def publish(self, topic, payload, qos):
-        self.published.append((topic, json.loads(payload)))
-
-    def deliver(self, topic, payload):
-        self.on_message(self, None, SimpleNamespace(topic=topic, payload=payload.encode()))
-
-
 def make_link():
     client = FakePahoClient()
-    return SimLink("broker", 1883, client=client), client
+    return SimLink("broker", 1883, "door-pi-sim", client=client), client
 
 
 def run_inputs(link):

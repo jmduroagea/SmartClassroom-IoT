@@ -14,16 +14,18 @@ scenario tests over MQTT):
   sim/door/speaker/said.
 
 The sim/ topics exist only in the simulation. They are not part of the contract
-(common/messages.py): SimLink is a separate MQTT connection that carries only them.
+(common/messages.py): common/sim_link.py is a separate MQTT connection that
+carries only them.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 import threading
-from typing import Callable, Dict, Iterable, Optional
+from typing import Callable, Iterable, Optional
+
+from common.sim_link import SimLink
 
 MOTION_KEY = "m"
 
@@ -32,7 +34,6 @@ SIM_MOTION = "sim/door/motion"        # {}
 SIM_LED = "sim/door/led"              # {"color": "green", "on": true}
 SIM_SAID = "sim/door/speaker/said"    # {"text": "Welcome, Gloria."}
 SIM_CLIENT_ID = "door-pi-sim"
-SIM_QOS = 1
 
 logger = logging.getLogger(__name__)
 
@@ -76,60 +77,6 @@ class PrintSpeaker:
 
 
 # --- Driven by sim/ topics ------------------------------------------------------------
-
-SimHandler = Callable[[dict], None]
-
-
-class SimLink:
-    """The MQTT connection of the fakes. It only publishes and listens on sim/ topics,
-    with plain JSON, so nothing here goes through the contract of the real system."""
-
-    def __init__(self, host: str, port: int, client=None) -> None:
-        """`client` is a paho client; the tests pass a fake one."""
-        if client is None:
-            import paho.mqtt.client as mqtt
-
-            client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=SIM_CLIENT_ID)
-        self._host, self._port = host, port
-        self._client = client
-        self._handlers: Dict[str, SimHandler] = {}
-        self._client.on_connect = self._on_connect
-        self._client.on_message = self._on_message
-
-    def start(self) -> None:
-        self._client.connect_async(self._host, self._port)
-        self._client.loop_start()
-
-    def stop(self) -> None:
-        self._client.loop_stop()
-        self._client.disconnect()
-
-    def subscribe(self, topic: str, handler: SimHandler) -> None:
-        """Call handler(data) for every message on the topic. Call it before start()."""
-        self._handlers[topic] = handler
-
-    def publish(self, topic: str, **fields) -> None:
-        self._client.publish(topic, json.dumps(fields), qos=SIM_QOS)
-
-    def _on_connect(self, client, _userdata, _flags, _reason_code, _properties=None) -> None:
-        # Also after a reconnection: the broker forgets the subscriptions.
-        for topic in self._handlers:
-            client.subscribe(topic, qos=SIM_QOS)
-
-    def _on_message(self, _client, _userdata, message) -> None:
-        handler = self._handlers.get(message.topic)
-        if handler is None:
-            return
-        try:
-            data = json.loads(message.payload)
-        except ValueError:
-            logger.warning("ignored %s: not JSON", message.topic)
-            return
-        if not isinstance(data, dict):
-            logger.warning("ignored %s: not a JSON object", message.topic)
-            return
-        handler(data)
-
 
 class TopicInputs:
     """Cards and movements from sim/ topics instead of the RDM6300 and the PIR."""
