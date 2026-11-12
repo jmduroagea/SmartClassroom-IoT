@@ -64,6 +64,7 @@ class Brain:
             "set_fan": lambda a: self._bus.publish(topics.ROOM_FAN_CMD, speed=a["speed"]),
             "set_alarm": lambda a: self._bus.publish(topics.DOOR_ALARM, enabled=a["enabled"]),
             "alert_units": self._alert_units,
+            "alert_call": self._alert_call,
             "access": lambda a: self._repo.log_access(a["card_id"], a["access"], a["name"], self._now()),
             "system_event": lambda a: self._repo.log_system(a["event"], a["device"], a["detail"], self._now()),
             "save_temperature": lambda a: self._repo.log_env(a["value"], self._now()),
@@ -181,6 +182,14 @@ class Brain:
             emergency_id=action["emergency_id"],
             temp=action["temp"],
             person=action["person"],
+        )
+
+    def _alert_call(self, action: dict) -> None:
+        self._bus.publish(
+            topics.ALERT_CALL,
+            ts=self._timestamp(),
+            reason=action["reason"],
+            emergency_id=action["emergency_id"],
         )
 
     # --- Helpers --------------------------------------------------------------------

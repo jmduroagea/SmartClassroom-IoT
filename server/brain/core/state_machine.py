@@ -22,6 +22,7 @@ class StateMachine:
     TIMER_PROMPT_DELAY = 3.0
     TIMER_REMINDER_DELAY = 5.0
     TIMER_TIMEOUT_DELAY = 30.0
+    TIMER_EVACUATION_DELAY = 120.0
 
     def __init__(self, clock, emit):
         self.clock = clock
@@ -80,10 +81,26 @@ class StateMachine:
         self.state = State.IDLE
         self.current_timer = None
 
+    def _not_evacuated(self):
+        """Callback for the 2-minute evacuation timeout during an emergency (T17)."""
+        self.current_timer = None
+        if self.state != State.EMERGENCY or self.current_user_card is None:
+            return
+        self.emit({"type": "emergency_not_evacuated", "emergency_id": self.emergency_id})
+        self.emit({"type": "emergency_call", "emergency_id": self.emergency_id, "reason": "not_evacuated"})
+        self.emit({"type": "alert_call", "emergency_id": self.emergency_id, "reason": "not_evacuated"})
+
     def handle_card(self, card_id: str, is_known: bool, user_name: str = None) -> list:
         """Handles card scans."""
         actions = []
         if self.state == State.EMERGENCY:
+            if is_known and self.current_user_card is not None and self.current_user_card == card_id:
+                self._cancel_timer()
+                name = self.current_user_name or user_name
+                self.current_user_card = None
+                self.current_user_name = None
+                actions.append({"type": "access", "access": "evacuated", "card_id": card_id, "name": name})
+                actions.append({"type": "emergency_evacuated", "emergency_id": self.emergency_id})
             return actions
 
         if self.state == State.LOCKED:
@@ -196,6 +213,10 @@ class StateMachine:
         self.state = State.EMERGENCY
         self.emergency_id = self.clock.now().strftime(self.EMERGENCY_ID_FORMAT)
         self.emergency_trigger = trigger
+        if inside:
+            self.current_timer = self.clock.schedule(
+                self.TIMER_EVACUATION_DELAY, self._not_evacuated
+            )
         record_person = {"card_id": self.current_user_card, "name": self.current_user_name} if inside else None
         return [
             {
@@ -215,6 +236,7 @@ class StateMachine:
         Whoever was still inside gets an emergency_end exit. Outside an emergency: nothing."""
         if self.state != State.EMERGENCY:
             return []
+        self._cancel_timer()
         actions = [
             {"type": "set_alarm", "enabled": False},
             {"type": "set_led", "color": "red", "mode": "off"},
@@ -268,6 +290,22 @@ class StateMachine:
             return []
 
         text = command.strip().lower()
+
+        if text == "help":
+            if self.state == State.EMERGENCY:
+                return [
+                    {"type": "alert_call", "emergency_id": self.emergency_id, "reason": "help"},
+                    {"type": "emergency_call", "emergency_id": self.emergency_id, "reason": "help"},
+                    {"type": "say", "text": "Emergency services have been called."},
+                ]
+            return [
+                {"type": "alert_call", "emergency_id": None, "reason": "help"},
+                {"type": "system_event", "event": "help_call", "device": "room", "detail": ""},
+                {"type": "say", "text": "Emergency services have been called."},
+            ]
+
+        if self.state == State.EMERGENCY:
+            return []
 
         actions = []
         speeds = FAN_SPEEDS

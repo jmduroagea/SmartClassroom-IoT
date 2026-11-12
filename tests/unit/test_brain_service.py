@@ -341,3 +341,21 @@ def test_timer_callbacks_run_inside_the_lock():
     clock.advance(1)
     assert seen == [True]
     assert not lock.locked()
+
+
+def test_help_voice_command_publishes_alert_call_in_inside_and_emergency(brain):
+    scan(brain, GLORIA["card_id"])
+    send(brain, topics.ROOM_VOICE, ts=TS, command="help")
+
+    calls = brain.bus.published_on(topics.ALERT_CALL)
+    assert len(calls) == 1
+    assert calls[0]["reason"] == "help"
+    assert calls[0]["emergency_id"] is None
+
+    send(brain, topics.WEB_CMD, ts=TS, action="simulate_emergency")
+    send(brain, topics.ROOM_VOICE, ts=TS, command="help")
+
+    calls = brain.bus.published_on(topics.ALERT_CALL)
+    assert len(calls) == 2
+    assert calls[1]["reason"] == "help"
+    assert calls[1]["emergency_id"] == brain.service.machine.emergency_id

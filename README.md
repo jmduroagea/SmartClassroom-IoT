@@ -194,12 +194,22 @@ Everything is defined in `compose.yaml` (repository root) and `docker/`.
 - `setup-db`: runs `server/setup_db.py` (indexes and test users) and exits.
 - `brain`: starts once the broker is healthy and `setup-db` has finished.
 - `web`: Express + AngularJS on http://localhost:3001.
+- `door`: the Door Pi program (`python -m door.main --sim-topics`) with fake hardware.
+- `emergency_center`: the simulated emergency centre, listening on `glo/alert/#`.
 
-The simulated Pis (`door`, `room`) and the emergency centre will be added to the same file,
-only on the `iot` network, once their fake adapters exist. The fakes will be driven through
-`sim/` topics (for example a card published on `sim/door/card`), going through the same code
-path as the real devices, and will report what they did (`sim/door/speaker/said`). Topics
-starting with `sim/` exist only in the simulation.
+The simulated Pis run their real code with fake hardware, only on the `iot` network. The fakes
+are driven through `sim/` topics and report what they did there:
+
+| Topic | Direction | Message |
+|---|---|---|
+| `sim/door/card` | test → door | `{"card_id": "CARD_GLORIA"}`: a card scanned |
+| `sim/door/motion` | test → door | `{}`: movement in front of the PIR |
+| `sim/door/led` | door → test | `{"color": "green", "on": true}` |
+| `sim/door/speaker/said` | door → test | `{"text": "Welcome, Gloria."}` |
+
+A card published on `sim/door/card` goes through the same code path as one read by the RDM6300.
+Topics starting with `sim/` exist only in the simulation and are not part of the contract
+(`common/messages.py`). The Room Pi container will be added the same way.
 
 ### How it reproduces the real system
 
