@@ -160,11 +160,15 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
 
   function drawEmergencyChart(data) {
     $scope.emergencyReadingsEmpty = data.readings.length === 0;
-    var labels = data.readings.map(function (r) { return hourMinuteSecond(r.ts); });
-    var parts = splitAtStart(data.readings, data.startedAt);
     if (emergencyChart) {
       emergencyChart.destroy();
+      emergencyChart = null;
     }
+    if ($scope.emergencyReadingsEmpty) {
+      return;
+    }
+    var labels = data.readings.map(function (r) { return hourMinuteSecond(r.ts); });
+    var parts = splitAtStart(data.readings, data.startedAt);
     emergencyChart = new Chart(document.getElementById('emergencyChart'), {
       type: 'line',
       data: {

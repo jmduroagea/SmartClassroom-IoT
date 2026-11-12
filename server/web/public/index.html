@@ -239,7 +239,7 @@
           <button class="btn btn-small" type="button" ng-click="hideEmergencyChart()">Close</button>
         </div>
         <p class="muted" ng-if="emergencyReadingsEmpty">No readings were saved for this emergency.</p>
-        <div class="chart-box"><canvas id="emergencyChart" role="img" aria-label="Temperature during the emergency"></canvas></div>
+        <div class="chart-box" ng-hide="emergencyReadingsEmpty"><canvas id="emergencyChart" role="img" aria-label="Temperature during the emergency"></canvas></div>
       </div>
     </section>
   </div>
