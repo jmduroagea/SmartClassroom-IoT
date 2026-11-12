@@ -20,12 +20,12 @@ from door.adapters.leds import GpioDoorLight
 from door.adapters.pir import GpioMotionSensor
 from door.adapters.rfid import SerialCardReader
 from door.adapters.simulated import KeyboardInput, PrintLight, PrintSpeaker
+from door.adapters.speaker import EspeakSpeaker
 from door.core.door_core import DoorCore
 
 CLIENT_ID = "door-pi"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-logger = logging.getLogger(__name__)
 
 
 class RealInputs:
@@ -48,9 +48,7 @@ def build_hardware(simulate: bool, config: Config):
     if simulate:
         return KeyboardInput(), PrintLight(), PrintSpeaker()
     inputs = RealInputs(GpioMotionSensor(), SerialCardReader(config.rfid_serial_port))
-    # The espeak-ng speaker is issue #10; until then the texts are only printed.
-    logger.warning("no real speaker yet (#10): texts are printed")
-    return inputs, GpioDoorLight(), PrintSpeaker()
+    return inputs, GpioDoorLight(), EspeakSpeaker()
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
