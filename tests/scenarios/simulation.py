@@ -85,7 +85,13 @@ def stop() -> None:
 
 
 def logs() -> str:
-    return docker_compose("logs", "--no-color", "--tail", str(LOG_LINES), "brain", "web", "door")
+    return docker_compose("logs", "--no-color", "--tail", str(LOG_LINES), "brain", "web", "door", "room")
+
+
+def kill(service: str) -> None:
+    """Stop a container at once, like pulling the plug: no clean disconnection,
+    so the broker publishes its last will. The next test recreates it."""
+    docker_compose("kill", service)
 
 
 def can_connect(service: str, host: str, port: int) -> bool:
