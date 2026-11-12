@@ -153,6 +153,15 @@ button, input { font: inherit; }
 .field input { height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #D5DBE3; font-size: 14px; background: #FFFFFF; }
 .quick { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 
+/* Early warning */
+.rising {
+  background: var(--orange-bg); color: var(--orange); border: 2px solid var(--orange-strong);
+  border-radius: 16px; padding: 16px 20px; display: flex; gap: 14px; align-items: center;
+}
+.rising svg { stroke: var(--orange-strong); flex-shrink: 0; }
+.rising h2 { margin: 0; font-family: var(--title-font); font-size: 18px; font-weight: 400; letter-spacing: .03em; }
+.rising p { margin: 4px 0 0; font-size: 15px; }
+
 /* Emergency banner */
 .emergency {
   background: var(--red-strong); color: #FFFFFF; border-radius: 16px; padding: 22px 24px;

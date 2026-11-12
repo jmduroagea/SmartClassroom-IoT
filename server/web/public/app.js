@@ -6,7 +6,7 @@ var CHART_REFRESH_MS = 30000;
 var CHART_PERIODS = [1, 6, 24];
 
 angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, $interval, $timeout) {
-  $scope.status = { state: 'normal', devices: {}, temperature: null, fanSpeed: 0, emergency: null };
+  $scope.status = { state: 'normal', devices: {}, temperature: null, risingBy: null, fanSpeed: 0, emergency: null };
   $scope.users = [];
   $scope.emergencies = [];
   $scope.accesses = [];

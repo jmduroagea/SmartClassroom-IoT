@@ -10,7 +10,7 @@ const request = require('supertest');
 const {
   createApp, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
   MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
-  LAST_UNKNOWN_MINUTES,
+  LAST_UNKNOWN_MINUTES, RISING_WINDOW_SECONDS, RISING_WARNING_DEGREES,
 } = require('../app');
 const { FakeBroker, fakeDb } = require('./fakes');
 
@@ -310,6 +310,53 @@ test('GET /api/status: an ended emergency is not shown', async () => {
 test('GET /api/status: the summary does not send the readings', async () => {
   const body = await status({ emergencies: [EMERGENCY] });
   assert.equal(body.emergency.readings, undefined);
+});
+
+// --- Early warning (#34) ---------------------------------------------------------
+
+// A reading `seconds` before NOW.
+const recent = (seconds, temp) => ({ ts: new Date(NOW.getTime() - seconds * 1000), temp });
+
+test('GET /api/status: gives how much the temperature rose in the last 30 s', async () => {
+  const body = await status({ env: [recent(25, 22.0), recent(15, 23.5), recent(5, 25.4)] });
+  assert.equal(body.risingBy, 3.4);
+});
+
+test(`GET /api/status: a rise of exactly ${RISING_WARNING_DEGREES} °C already warns`, async () => {
+  const body = await status({ env: [recent(20, 22.0), recent(5, 22.0 + RISING_WARNING_DEGREES)] });
+  assert.equal(body.risingBy, RISING_WARNING_DEGREES);
+});
+
+test('GET /api/status: a small rise gives no warning', async () => {
+  const body = await status({ env: [recent(25, 22.0), recent(5, 24.9)] });
+  assert.equal(body.risingBy, null);
+});
+
+test('GET /api/status: the warning uses the newest reading, so it goes away when the temperature drops', async () => {
+  const body = await status({ env: [recent(25, 22.0), recent(15, 26.0), recent(5, 23.0)] });
+  assert.equal(body.risingBy, null);
+});
+
+test(`GET /api/status: readings older than ${RISING_WINDOW_SECONDS} s do not count`, async () => {
+  // It went up 4 °C, but the low reading is too old: the temperature has been stable since.
+  const body = await status({
+    env: [recent(RISING_WINDOW_SECONDS + 10, 22.0), recent(20, 26.0), recent(5, 26.0)],
+  });
+  assert.equal(body.risingBy, null);
+});
+
+test('GET /api/status: one reading is not enough for a warning', async () => {
+  const body = await status({ env: [recent(5, 40.0)] });
+  assert.equal(body.risingBy, null);
+});
+
+test('GET /api/status: no warning during an emergency (the emergency banner is shown)', async () => {
+  const body = await status({
+    env: [recent(25, 22.0), recent(5, 26.0)],
+    emergencies: [EMERGENCY],
+  });
+  assert.equal(body.state, 'emergency');
+  assert.equal(body.risingBy, null);
 });
 
 test('GET /api/status with the database down returns 500 and does not crash', async () => {

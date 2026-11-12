@@ -37,6 +37,14 @@
 
   <p class="error" ng-if="error">{{ error }}</p>
 
+  <section class="rising" ng-if="status.risingBy && status.state !== 'emergency'">
+    <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><path d="M19 9V3"/><path d="M16.5 5.5L19 3l2.5 2.5"/></svg>
+    <div>
+      <h2>Temperature rising quickly</h2>
+      <p>+{{ status.risingBy | number:1 }} °C in the last 30 s · now {{ status.temperature | number:1 }} °C</p>
+    </div>
+  </section>
+
   <section class="emergency" ng-if="status.state === 'emergency'">
     <div class="emergency-main">
       <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
