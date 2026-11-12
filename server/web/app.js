@@ -41,6 +41,7 @@ const FAN_SPEEDS = [0, 1, 2, 3];
 
 const BAD_REQUEST = 400;
 const UNAUTHORIZED = 401;
+const NOT_FOUND = 404;
 const SERVER_ERROR = 500;
 const UNAVAILABLE = 503;
 
@@ -87,6 +88,7 @@ function summarizeEmergency(doc) {
 // for the per-emergency chart, which is an extra.
 function historyEntry(doc) {
   return {
+    id: doc._id,
     startedAt: doc.started_at,
     endedAt: doc.ended_at || null,
     inProgress: !doc.ended_at,
@@ -293,6 +295,28 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
       res.json(docs.map(historyEntry));
     } catch (err) {
       res.status(SERVER_ERROR).json({ error: err.message });
+    }
+  });
+
+  // The readings saved in one emergency record: the 30 s before it started
+  // and every reading during it, oldest first, for its chart.
+  app.get('/api/emergencies/:id/readings', async (req, res) => {
+    try {
+      const db = await getDb();
+      const doc = await db
+        .collection('emergencies')
+        .find({ _id: req.params.id }, { projection: { started_at: 1, readings: 1 } })
+        .limit(1)
+        .next();
+      if (!doc) {
+        return res.status(NOT_FOUND).json({ error: 'no emergency with that id' });
+      }
+      const readings = (doc.readings || [])
+        .map((r) => ({ ts: r.ts, temp: r.temp }))
+        .sort((a, b) => new Date(a.ts) - new Date(b.ts));
+      return res.json({ startedAt: doc.started_at, readings });
+    } catch (err) {
+      return res.status(SERVER_ERROR).json({ error: err.message });
     }
   });
 

@@ -206,7 +206,7 @@
       <p class="muted" ng-if="emergencies.length === 0">No emergencies yet.</p>
       <div class="table-box" ng-if="emergencies.length > 0">
         <table>
-          <tr><th>Start</th><th>End</th><th>Trigger</th><th>Person</th><th>Left at</th><th>Calls</th></tr>
+          <tr><th>Start</th><th>End</th><th>Trigger</th><th>Person</th><th>Left at</th><th>Calls</th><th></th></tr>
           <tr ng-repeat="e in emergencies">
             <td>{{ e.startedAt | date:'dd/MM HH:mm:ss' }}</td>
             <td>
@@ -226,8 +226,20 @@
                 <li ng-repeat="c in e.calls">{{ c.ts | date:'HH:mm:ss' }} {{ callReason(c.reason) }}</li>
               </ul>
             </td>
+            <td>
+              <button class="btn btn-small" type="button" ng-click="showEmergencyChart(e)"
+                      ng-class="{ active: selectedEmergency.id === e.id }">Chart</button>
+            </td>
           </tr>
         </table>
+      </div>
+      <div class="emergency-chart" ng-show="selectedEmergency">
+        <div class="card-head">
+          <p class="subhead">Readings of the emergency of {{ selectedEmergency.startedAt | date:'dd/MM HH:mm:ss' }}</p>
+          <button class="btn btn-small" type="button" ng-click="hideEmergencyChart()">Close</button>
+        </div>
+        <p class="muted" ng-if="emergencyReadingsEmpty">No readings were saved for this emergency.</p>
+        <div class="chart-box"><canvas id="emergencyChart" role="img" aria-label="Temperature during the emergency"></canvas></div>
       </div>
     </section>
   </div>

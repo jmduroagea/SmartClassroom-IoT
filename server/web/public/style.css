@@ -171,6 +171,10 @@ button, input { font: inherit; }
 
 /* Chart */
 .chart-box { position: relative; height: 260px; }
+.emergency-chart { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.emergency-chart .subhead { margin: 0; }
+.btn-small { height: 36px; padding: 0 12px; font-size: 13px; }
+.btn-small.active { border-color: var(--blue); color: var(--blue); }
 
 /* Report */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 18px; }

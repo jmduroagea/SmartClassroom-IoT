@@ -5,7 +5,7 @@ var STALE_SECONDS = 30;
 var CHART_REFRESH_MS = 30000;
 var CHART_PERIODS = [1, 6, 24];
 
-angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, $interval) {
+angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, $interval, $timeout) {
   $scope.status = { state: 'normal', devices: {}, temperature: null, fanSpeed: 0, emergency: null };
   $scope.users = [];
   $scope.emergencies = [];
@@ -133,6 +133,71 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
       },
     });
   }
+
+  // --- Chart of one emergency's readings ---
+  var emergencyChart = null;
+  $scope.selectedEmergency = null;
+  $scope.emergencyReadingsEmpty = false;
+
+  function hourMinuteSecond(ts) {
+    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // Grey for the readings before the start (the ones that triggered it), red after.
+  // The last grey point is repeated in red, so the two lines join.
+  function splitAtStart(readings, startedAt) {
+    var start = new Date(startedAt).getTime();
+    var before = [];
+    var during = [];
+    readings.forEach(function (r, i) {
+      var isBefore = new Date(r.ts).getTime() < start;
+      var nextIsDuring = i + 1 < readings.length && new Date(readings[i + 1].ts).getTime() >= start;
+      before.push(isBefore ? r.temp : null);
+      during.push(!isBefore || nextIsDuring ? r.temp : null);
+    });
+    return { before: before, during: during };
+  }
+
+  function drawEmergencyChart(data) {
+    $scope.emergencyReadingsEmpty = data.readings.length === 0;
+    var labels = data.readings.map(function (r) { return hourMinuteSecond(r.ts); });
+    var parts = splitAtStart(data.readings, data.startedAt);
+    if (emergencyChart) {
+      emergencyChart.destroy();
+    }
+    emergencyChart = new Chart(document.getElementById('emergencyChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Before', data: parts.before, borderColor: '#9AA3AF', borderWidth: 3, pointRadius: 0, tension: 0.3 },
+          { label: 'Emergency', data: parts.during, borderColor: '#B42318', borderWidth: 3, pointRadius: 0, tension: 0.3 },
+        ],
+      },
+      options: {
+        animation: false,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: true } },
+        scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { title: { display: true, text: '°C' } } },
+      },
+    });
+  }
+
+  $scope.showEmergencyChart = function (emergency) {
+    $http.get('/api/emergencies/' + encodeURIComponent(emergency.id) + '/readings').then(function (res) {
+      $scope.selectedEmergency = emergency;
+      // Wait until Angular has shown the chart box, so Chart.js can measure it.
+      $timeout(function () { drawEmergencyChart(res.data); });
+    }, fail);
+  };
+
+  $scope.hideEmergencyChart = function () {
+    $scope.selectedEmergency = null;
+    if (emergencyChart) {
+      emergencyChart.destroy();
+      emergencyChart = null;
+    }
+  };
 
   function loadChart() {
     $http.get('/api/env', { params: { hours: $scope.chartHours } }).then(function (res) {
