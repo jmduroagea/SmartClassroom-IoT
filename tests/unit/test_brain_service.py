@@ -10,6 +10,8 @@ import pytest
 
 from common import topics
 from common.bus import FakeBus
+from datetime import timedelta
+
 from common.clock import FAKE_START, FakeClock
 from server.brain.adapters.fake_repository import FakeRepository
 from server.brain.service import Brain, LockedClock
@@ -142,6 +144,89 @@ def test_simulated_emergency_uses_the_last_reading(brain):
     [alert] = brain.bus.published_on(topics.ALERT_UNITS)
     assert alert["temp"] == 22.0
     assert alert["person"] is None
+
+
+def only_record(brain):
+    [record] = brain.repo.emergencies.values()
+    return record
+
+
+def test_temperature_rise_creates_the_full_emergency_record(brain):  # Done when of #23
+    scan(brain, "CARD_GLORIA")
+    for _ in range(16):  # 32 s at room temperature: the 30 s window is full
+        reading(brain, BASE)
+    reading(brain, BASE + 6)
+    send(brain, topics.ROOM_ENV, ts=TS, temp=BASE + 6)  # second in a row: declared now
+    declared_at = brain.clock.now()
+    record = only_record(brain)
+    buffer = record.pop("readings")
+    assert record == {
+        "_id": "em-20261110T090034",  # FakeClock starts at 09:00:00; 17 readings, 2 s apart
+        "started_at": declared_at,
+        "ended_at": None,
+        "trigger": "rate",
+        "trigger_temp": BASE + 6,
+        "person": {"card_id": "CARD_GLORIA", "name": "Gloria"},
+        "evacuated_at": None,
+        "not_evacuated_alert": False,
+        "units_notified_at": declared_at,
+        "calls": [],
+    }
+    # The readings of the last 30 s, oldest first, ending with the two that triggered it
+    assert [r["temp"] for r in buffer[-2:]] == [BASE + 6, BASE + 6]
+    assert all(r["temp"] == BASE for r in buffer[:-2])
+    assert buffer[-1]["ts"] == declared_at
+    assert declared_at - buffer[0]["ts"] <= timedelta(seconds=30)
+    alert = brain.bus.published_on(topics.ALERT_UNITS)[0]
+    assert alert["emergency_id"] == record["_id"]
+
+
+def test_simulated_emergency_record_with_nobody_inside(brain):
+    reading(brain, 22.0)
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    record = only_record(brain)
+    assert record["trigger"] == "simulated"
+    assert record["trigger_temp"] == 22.0
+    assert record["person"] is None
+    assert [r["temp"] for r in record["readings"]] == [22.0]
+
+
+def test_simulated_emergency_without_any_reading(brain):
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    record = only_record(brain)
+    assert record["trigger_temp"] is None
+    assert record["readings"] == []
+
+
+def test_readings_during_the_emergency_go_to_the_record_and_to_env(brain):
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    env_before = len(brain.repo.env_logs)
+    for temp in (30.0, 35.0, 40.0, 45.0, 50.0, 55.0):  # 12 s of readings
+        reading(brain, temp)
+    assert [r["temp"] for r in only_record(brain)["readings"]] == [30.0, 35.0, 40.0, 45.0, 50.0, 55.0]
+    assert len(brain.repo.env_logs) - env_before == 2  # still one every 10 s, for the chart
+
+
+def test_a_second_emergency_does_not_create_another_record(brain):
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    brain.clock.advance(5)
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    assert len(brain.repo.emergencies) == 1
+
+
+def test_calls_and_evacuation_are_saved_in_the_record(brain):
+    # What the parts of the brain that detect calls and evacuation will emit
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    emergency_id = brain.service.machine.emergency_id
+    brain.clock.advance(10)
+    brain.service.machine.emit({"type": "emergency_call", "emergency_id": emergency_id, "reason": "help"})
+    brain.clock.advance(10)
+    brain.service.machine.emit({"type": "emergency_evacuated", "emergency_id": emergency_id})
+    brain.service.machine.emit({"type": "emergency_not_evacuated", "emergency_id": emergency_id})
+    record = only_record(brain)
+    assert record["calls"] == [{"ts": FAKE_START + timedelta(seconds=10), "reason": "help"}]
+    assert record["evacuated_at"] == FAKE_START + timedelta(seconds=20)
+    assert record["not_evacuated_alert"] is True
 
 
 def test_end_emergency_does_not_break_anything_yet(brain):

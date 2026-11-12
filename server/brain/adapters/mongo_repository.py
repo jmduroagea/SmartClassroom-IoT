@@ -20,6 +20,7 @@ class MongoRepository(RepositoryPort):
         self.env_col = self.db["env"]
         self.fan_col = self.db["fan_log"]
         self.motion_col = self.db["motion_log"]
+        self.emergencies_col = self.db["emergencies"]
 
     def find_user_by_card(self, card_id: str) -> Optional[Dict[str, Any]]:
         try:
@@ -86,3 +87,27 @@ class MongoRepository(RepositoryPort):
             })
         except PyMongoError as e:
             logger.error(f"MongoDB error in log_motion (T12): {e}")
+
+    def create_emergency(self, emergency_id: str, record: Dict[str, Any]) -> None:
+        try:
+            self.emergencies_col.insert_one({"_id": emergency_id, **record})
+        except PyMongoError as e:
+            logger.error(f"MongoDB error in create_emergency (T12): {e}")
+
+    def add_emergency_reading(self, emergency_id: str, temp: float, ts: datetime) -> None:
+        self._update_emergency(emergency_id, {"$push": {"readings": {"ts": ts, "temp": temp}}}, "add_emergency_reading")
+
+    def add_emergency_call(self, emergency_id: str, reason: str, ts: datetime) -> None:
+        self._update_emergency(emergency_id, {"$push": {"calls": {"ts": ts, "reason": reason}}}, "add_emergency_call")
+
+    def mark_evacuated(self, emergency_id: str, ts: datetime) -> None:
+        self._update_emergency(emergency_id, {"$set": {"evacuated_at": ts}}, "mark_evacuated")
+
+    def mark_not_evacuated(self, emergency_id: str) -> None:
+        self._update_emergency(emergency_id, {"$set": {"not_evacuated_alert": True}}, "mark_not_evacuated")
+
+    def _update_emergency(self, emergency_id: str, update: Dict[str, Any], operation: str) -> None:
+        try:
+            self.emergencies_col.update_one({"_id": emergency_id}, update)
+        except PyMongoError as e:
+            logger.error(f"MongoDB error in {operation} (T12): {e}")

@@ -167,11 +167,17 @@ class StateMachine:
             return []
         self._cancel_timer()
         self.fan_speed = 0
-        person = self.current_user_name if self.state == State.INSIDE else None
+        inside = self.state == State.INSIDE
+        person = self.current_user_name if inside else None
         self.state = State.EMERGENCY
         self.emergency_id = self.clock.now().strftime(self.EMERGENCY_ID_FORMAT)
         self.emergency_trigger = trigger
+        record_person = {"card_id": self.current_user_card, "name": self.current_user_name} if inside else None
         return [
+            {
+                "type": "open_emergency_record", "emergency_id": self.emergency_id,
+                "trigger": trigger, "trigger_temp": temp, "person": record_person,
+            },
             {"type": "set_fan", "speed": 0},
             {"type": "set_led", "color": "red", "mode": "blink"},
             {"type": "set_alarm", "enabled": True},
@@ -188,16 +194,17 @@ class StateMachine:
         return [{"type": "set_fan", "speed": speed}]
 
     def handle_temperature(self, timestamp: float, temp: float) -> list:
-        """Saves temperature readings periodically."""
+        """Saves one reading every 10 s in env and, during an emergency, every reading
+        in the emergency record too (so the chart also shows the rise)."""
         actions = []
         self.last_known_temp = temp
-        if self.state == State.EMERGENCY:
-            return actions
 
         time_diff = timestamp - self.last_temp_save_time
         if time_diff >= self.TEMP_SAVE_INTERVAL_SECONDS:
             self.last_temp_save_time = timestamp
             actions.append({"type": "save_temperature", "value": temp})
+        if self.state == State.EMERGENCY:
+            actions.append({"type": "emergency_reading", "emergency_id": self.emergency_id, "value": temp})
         return actions
 
     def handle_voice_command(self, command: str) -> list:
