@@ -27,8 +27,7 @@ services:
     volumes:
       - ./server/mosquitto/smartroom.conf:/mosquitto/config/mosquitto.conf:ro
     ports:
-      - "127.0.0.1:1883:1883"
-                  # tests on the laptop play the Pis' role
+      - "127.0.0.1:1883:1883"                  # tests on the laptop play the Pis' role
     networks: [iot, edge]
     healthcheck:
       test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "health", "-m", "ok"]
@@ -92,8 +91,7 @@ services:
       # tests can use it. The real server (config.js) still refuses to start without one.
       WEB_PASSWORD: ${WEB_PASSWORD:-simulation}
     ports:
-      - "127.0.0.1:3001:3001"
-                  # open http://localhost:3001
+      - "127.0.0.1:3001:3001"                  # open http://localhost:3001
     networks: [iot, db, edge]
     depends_on:
       broker: { condition: service_healthy }
