@@ -32,6 +32,7 @@ class StateMachine:
         self.current_user_name = None
         self.emergency_id = None
         self.emergency_trigger = None
+        self.locked_before_emergency = False
         self.last_temp_save_time = 0.0
         self.last_known_temp = None
         self.current_timer = None
@@ -169,6 +170,8 @@ class StateMachine:
         self.fan_speed = 0
         inside = self.state == State.INSIDE
         person = self.current_user_name if inside else None
+        # The emergency lifts the lock; the web must see it unlocked when it ends.
+        self.locked_before_emergency = self.state == State.LOCKED
         self.state = State.EMERGENCY
         self.emergency_id = self.clock.now().strftime(self.EMERGENCY_ID_FORMAT)
         self.emergency_trigger = trigger
@@ -198,6 +201,8 @@ class StateMachine:
             {"type": "set_mic", "enabled": False},
             {"type": "set_pir", "enabled": True},
         ]
+        if self.locked_before_emergency:
+            actions.append({"type": "system_event", "event": "unlocked", "device": "brain", "detail": "emergency ended"})
         if self.current_user_card is not None:
             actions.append({
                 "type": "access", "access": "emergency_end",
@@ -212,6 +217,7 @@ class StateMachine:
         self.current_user_name = None
         self.emergency_id = None
         self.emergency_trigger = None
+        self.locked_before_emergency = False
         return actions
 
     def handle_fan_command(self, command: dict) -> list:

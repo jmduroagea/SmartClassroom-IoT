@@ -153,12 +153,27 @@ class TestEmergency(unittest.TestCase):
     def test_an_emergency_that_started_locked_ends_in_idle(self):  # T21
         self.lock()
         self.sm.handle_emergency("rate", TEMP)
-        self.sm.end_emergency()
+        actions = self.sm.end_emergency()
+        unlocked = {"type": "system_event", "event": "unlocked", "device": "brain", "detail": "emergency ended"}
+        self.assertIn(unlocked, actions)  # so the web stops showing "locked"
         self.assertEqual(self.sm.state, State.IDLE)
         self.assertEqual(self.sm.failed_attempts, 0)
         actions = self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
         self.assertEqual(self.sm.state, State.INSIDE)
         self.assertNotIn({"type": "set_led", "color": "red", "mode": "pulse"}, actions)
+
+    def test_an_emergency_from_idle_does_not_write_unlocked(self):
+        self.sm.handle_emergency("rate", TEMP)
+        actions = self.sm.end_emergency()
+        self.assertFalse(any(a.get("event") == "unlocked" for a in actions))
+
+    def test_unlocked_is_written_only_for_the_emergency_that_lifted_the_lock(self):
+        self.lock()
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.end_emergency()
+        self.sm.handle_emergency("simulated")  # this one starts in IDLE
+        actions = self.sm.end_emergency()
+        self.assertFalse(any(a.get("event") == "unlocked" for a in actions))
 
     def test_end_outside_an_emergency_does_nothing(self):
         self.assertEqual(self.sm.end_emergency(), [])

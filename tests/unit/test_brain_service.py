@@ -286,6 +286,15 @@ def test_after_the_pause_a_new_rise_starts_a_new_emergency(brain):  # T24
     assert len(brain.repo.emergencies) == 2
 
 
+def test_after_an_emergency_that_started_locked_the_web_sees_it_unlocked(brain):
+    for attempt in range(3):
+        scan(brain, f"UNKNOWN_{attempt}")
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    end(brain)
+    lock_events = [log["event"] for log in brain.repo.system_logs if log["event"] in ("locked", "unlocked")]
+    assert lock_events[-1] == "unlocked"
+
+
 def test_end_without_an_emergency_only_logs_a_warning(brain, caplog):
     end(brain)
     assert "no emergency" in caplog.text
