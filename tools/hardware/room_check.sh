@@ -5,7 +5,7 @@
 #     ./tools/hardware/room_check.sh SERVER_IP        e.g. 10.12.220.101
 #
 # Run it after setup_room.sh, with the program stopped (it uses the microphone and
-# the servo). Follow the instructions on screen. Everything is also saved to
+# the servo). Follow the instructions on screen and answer its questions. Everything is also saved to
 # ~/check_room.txt, and the measured values are listed again at the end as
 # "FACT key=value": paste that summary to Claude, plus your notes.
 set -u
@@ -42,10 +42,20 @@ export PYTHONUNBUFFERED=1           # show Python output live over ssh
 fact() { echo "FACT $1=$2" | tee -a "$FACTS_FILE"; }
 step() { echo; echo "===== $* ====="; }
 countdown() { for i in $(seq "$1" -1 1); do echo "  $i..."; sleep 1; done; echo "  NOW"; }
+ask() { read -r -p "  $1 [y/n] " answer < /dev/tty; fact "$2" "${answer:-?}"; }
+note() { read -r -p "  $1 " answer < /dev/tty; fact "$2" "${answer:-?}"; }
 usb_card() { "$1" -l 2>/dev/null | awk '/^card/ && /USB/ {gsub(":",""); print $2; exit}'; }
 
 echo "Room Pi check, $(date), repository at $(git -C "$REPO_DIR" log -1 --format=%h)"
 fact throttled_at_start "$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)"
+
+# ---- First-time configuration (1-Wire for the DS18B20) ----------------------------
+step "0/4 FIRST-TIME CONFIGURATION (1-Wire for the DS18B20)"
+fact config_w1_overlay "$(grep -c '^dtoverlay=w1-gpio' /boot/config.txt)"
+fact w1_modules_loaded "$(lsmod | grep -cE '^w1_(gpio|therm)')"
+fact user_groups "$(id -nG | tr ' ' ',')"
+echo "Expected: config_w1_overlay=1, w1_modules_loaded=2 (w1_therm only loads once a probe"
+echo "is found), and the groups include gpio and audio."
 
 # ---- MQTT to the Server Pi -----------------------------------------------------
 step "1/4 MQTT ROUND TRIP TO THE SERVER PI ($SERVER_IP)"
@@ -202,11 +212,14 @@ for duty in WIDE:
 pwm.ChangeDutyCycle(DUTY_CYCLE_BY_SPEED[STOPPED]); time.sleep(1)
 pwm.stop(); GPIO.cleanup(FAN_PIN)
 EOF
+ask "At speed 0, was the servo completely still?" servo_stops_at_0
+ask "Were speeds 1, 2 and 3 clearly different from each other?" servo_speeds_distinct
+note "In the wide sweep, from which duty % did it stop getting faster?" servo_max_useful_duty
 
 # 0x0 = fine. Anything else after the servo test: the power supply is not enough.
 fact throttled_at_end "$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)"
 
-step "SUMMARY (paste this to Claude, plus your notes on the servo)"
+step "SUMMARY (paste this to Claude)"
 cat "$FACTS_FILE"
 rm -f "$FACTS_FILE"
 echo; echo "Saved to $LOG_FILE"
