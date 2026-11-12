@@ -2,8 +2,8 @@
 
 A continuous servo does not turn to an angle: the width of its pulse sets the
 speed. At 50 Hz, a 1.5 ms pulse (a duty cycle of 7.5 %) stops it, and wider
-pulses turn it faster. The duty cycles below are a first guess; issue #15
-calibrates them on the real servo.
+pulses turn it faster. The duty cycles below were calibrated on the real
+servo (#15).
 """
 
 from __future__ import annotations
@@ -11,8 +11,9 @@ from __future__ import annotations
 FAN_PIN = 18                # BCM numbering (physical pin 12)
 PWM_FREQUENCY_HZ = 50       # servos expect one pulse every 20 ms
 STOPPED = 0
-# Speed of the contract (messages.FAN_SPEEDS) -> duty cycle in %. Provisional (#15).
-DUTY_CYCLE_BY_SPEED = {0: 7.5, 1: 8.5, 2: 9.2, 3: 10.0}
+# Speed of the contract (messages.FAN_SPEEDS) -> duty cycle in %. Calibrated on the
+# real servo (#15): it stops at 7.5 and is no faster above 9.5.
+DUTY_CYCLE_BY_SPEED = {0: 7.5, 1: 8.2, 2: 8.9, 3: 9.5}
 
 
 def _load_gpio():
