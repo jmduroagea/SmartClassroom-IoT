@@ -6,8 +6,8 @@ reliable on a Pi 3.
 
 Vosk gives a confidence for each word. A phrase is accepted only if no word
 is very doubtful AND the phrase as a whole was heard clearly, so one word
-heard a bit worse does not spoil the rest. Both thresholds are provisional
-until Thursday's recordings (#70).
+heard a bit worse does not spoil the rest. Both thresholds come from the
+Room Pi recordings (#70).
 """
 
 from __future__ import annotations
@@ -27,8 +27,9 @@ AUDIO_CHANNELS = 1
 SAMPLE_FORMAT = "int16"
 UNKNOWN_WORD = "[unk]"
 
-# Confidence rule (provisional, #70)
-WORD_MIN_CONFIDENCE = 0.4       # no word may be below this
+# Confidence rule, from the Room Pi recordings (#70): the wake word "okay" comes
+# out at 0.46-0.50 and every other word at 1.0.
+WORD_MIN_CONFIDENCE = 0.3       # no word may be below this
 AVERAGE_MIN_CONFIDENCE = 0.7    # the average of the words must reach this
 
 logger = logging.getLogger(__name__)

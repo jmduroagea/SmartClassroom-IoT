@@ -6,7 +6,7 @@ from common import messages
 from room.core.voice import ALL_PHRASES, PHRASES, command_for
 
 
-@pytest.mark.parametrize("wake", ["ok computer", "okay computer"])
+@pytest.mark.parametrize("wake", ["ok computer", "okay computer", "computer"])
 @pytest.mark.parametrize(
     "phrase, command",
     [
@@ -25,7 +25,6 @@ def test_every_phrase_after_the_wake_word_gives_its_command(wake, phrase, comman
     [
         "i'm hot",                  # no wake word (T27)
         "help",
-        "computer i'm hot",         # half a wake word
         "ok i'm hot",
         "i'm hot ok computer",      # wake word at the end
     ],
@@ -57,5 +56,5 @@ def test_the_commands_are_the_ones_in_the_contract():
 
 
 def test_the_grammar_has_every_phrase_with_every_wake_word():
-    assert len(ALL_PHRASES) == 8
+    assert len(ALL_PHRASES) == 12
     assert "okay computer what's the temperature" in ALL_PHRASES

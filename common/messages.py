@@ -25,7 +25,7 @@ STATUS_OFFLINE = "offline"
 
 # Fire alarm: while it is on, the Door Pi says ALARM_TEXT every ALARM_INTERVAL_SECONDS
 ALARM_TEXT = "Fire alert. Please leave the room now."
-ALARM_INTERVAL_SECONDS = 3
+ALARM_INTERVAL_SECONDS = 5  # espeak-ng takes 3.2 s to say it (#70): 5 s leaves a silence
 
 # Field types. NULLABLE_STR accepts a text or null (None in Python).
 NULLABLE_STR = (str, type(None))

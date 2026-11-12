@@ -11,8 +11,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-# The recogniser may write "ok" or "okay": both are accepted until Thursday's test.
-WAKE_WORDS = ("ok computer", "okay computer")
+# Vosk writes "okay" (measured on the Room Pi, #70); "ok" is kept, it costs nothing.
+# "computer" alone: from 2 m away Vosk often loses the "okay". It is still safe,
+# because no sentence of the system contains "computer" (#68).
+WAKE_WORDS = ("ok computer", "okay computer", "computer")
 
 # What the person says after the wake word -> command of the contract
 PHRASES = {
