@@ -1,9 +1,9 @@
 """The real fan: an FS90R continuous-rotation servo, driven by PWM on GPIO18.
 
 A continuous servo does not turn to an angle: the width of its pulse sets the
-speed. At 50 Hz, a 1.5 ms pulse (a duty cycle of 7.5 %) stops it, and wider
-pulses turn it faster. The duty cycles below were calibrated on the real
-servo (#15).
+speed. At 50 Hz, wider pulses turn it faster. To stop it, no pulse is sent at
+all: the theoretical rest pulse (1.5 ms, 7.5 %) still made the real servo creep,
+because its rest point drifts a little with each unit and as it warms up (#15).
 """
 
 from __future__ import annotations
@@ -11,9 +11,12 @@ from __future__ import annotations
 FAN_PIN = 18                # BCM numbering (physical pin 12)
 PWM_FREQUENCY_HZ = 50       # servos expect one pulse every 20 ms
 STOPPED = 0
+# A duty cycle of 0 % sends no pulse: with no signal the servo stops dead,
+# whatever its own rest point.
+NO_PULSE = 0
 # Speed of the contract (messages.FAN_SPEEDS) -> duty cycle in %. Calibrated on the
-# real servo (#15): it stops at 7.5 and is no faster above 9.5.
-DUTY_CYCLE_BY_SPEED = {0: 7.5, 1: 8.2, 2: 8.9, 3: 9.5}
+# real servo (#15): it starts turning above 7.5 and is no faster above 9.5.
+DUTY_CYCLE_BY_SPEED = {STOPPED: NO_PULSE, 1: 8.2, 2: 8.9, 3: 9.5}
 
 
 def _load_gpio():
