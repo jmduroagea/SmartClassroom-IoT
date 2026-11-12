@@ -727,3 +727,60 @@ test('the title font is served from node_modules, not from the internet', async 
   const res = await request(app).get('/lib/fonts/michroma-latin-400-normal.woff2');
   assert.equal(res.status, 200);
 });
+
+// --- Chart of each emergency (#33) -------------------------------------------------
+
+test('GET /api/emergencies gives each emergency its id', async () => {
+  const { app } = setup({ collections: { emergencies: [{ ...EMERGENCY, _id: 'em-20261110T090500' }] } });
+  const res = await request(app).get('/api/emergencies');
+  assert.equal(res.body[0].id, 'em-20261110T090500');
+});
+
+const READINGS = [
+  { ts: T(5), temp: 41.0 },
+  { ts: T(4), temp: 22.0 },   // saved from the buffer, before the start
+  { ts: T(6), temp: 43.5 },
+];
+
+test('GET /api/emergencies/:id/readings gives the start and the readings, oldest first', async () => {
+  const { app } = setup({
+    collections: { emergencies: [{ ...EMERGENCY, _id: 'em-1', started_at: T(5), readings: READINGS }] },
+  });
+  const res = await request(app).get('/api/emergencies/em-1/readings');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, {
+    startedAt: T(5),
+    readings: [{ ts: T(4), temp: 22.0 }, { ts: T(5), temp: 41.0 }, { ts: T(6), temp: 43.5 }],
+  });
+});
+
+test('GET /api/emergencies/:id/readings only gives the readings of that emergency', async () => {
+  const { app } = setup({
+    collections: {
+      emergencies: [
+        { ...EMERGENCY, _id: 'em-1', readings: [{ ts: T(1), temp: 30 }] },
+        { ...EMERGENCY, _id: 'em-2', readings: [{ ts: T(2), temp: 50 }] },
+      ],
+    },
+  });
+  const res = await request(app).get('/api/emergencies/em-2/readings');
+  assert.deepEqual(res.body.readings, [{ ts: T(2), temp: 50 }]);
+});
+
+test('GET /api/emergencies/:id/readings of an emergency without readings gives an empty list', async () => {
+  const { app } = setup({ collections: { emergencies: [{ ...EMERGENCY, _id: 'em-1', readings: undefined }] } });
+  const res = await request(app).get('/api/emergencies/em-1/readings');
+  assert.deepEqual(res.body.readings, []);
+});
+
+test('GET /api/emergencies/:id/readings of an unknown emergency returns 404', async () => {
+  const { app } = setup({ collections: { emergencies: [{ ...EMERGENCY, _id: 'em-1' }] } });
+  const res = await request(app).get('/api/emergencies/em-9/readings');
+  assert.equal(res.status, 404);
+});
+
+test('GET /api/emergencies/:id/readings with the database down returns 500', async () => {
+  const { app } = setup({ dbDown: true });
+  const res = await request(app).get('/api/emergencies/em-1/readings');
+  assert.equal(res.status, 500);
+});
