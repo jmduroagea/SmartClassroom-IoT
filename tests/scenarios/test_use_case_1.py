@@ -223,7 +223,6 @@ def test_voice_temperature_uses_the_latest_reading(sim):
     sim.said(containing=f"{round(WARMER_TEMPERATURE)} degrees")
 
 
-@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_help_calls_the_emergency_centre(sim):
     enter(sim, GLORIA, "Gloria")
 
