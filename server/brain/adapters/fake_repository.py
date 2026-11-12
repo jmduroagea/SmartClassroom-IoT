@@ -12,6 +12,7 @@ class FakeRepository(RepositoryPort):
         self.env_logs: List[Dict[str, Any]] = []
         self.fan_logs: List[Dict[str, Any]] = []
         self.motion_logs: List[Dict[str, Any]] = []
+        self.emergencies: Dict[str, Dict[str, Any]] = {}
 
     def find_user_by_card(self, card_id: str) -> Optional[Dict[str, Any]]:
         for user in self.users:
@@ -59,3 +60,21 @@ class FakeRepository(RepositoryPort):
             "detected": detected,
             "ts": ts
         })
+
+    def create_emergency(self, emergency_id: str, record: Dict[str, Any]) -> None:
+        self.emergencies[emergency_id] = {"_id": emergency_id, **record}
+
+    def add_emergency_reading(self, emergency_id: str, temp: float, ts: datetime) -> None:
+        self.emergencies[emergency_id]["readings"].append({"ts": ts, "temp": temp})
+
+    def add_emergency_call(self, emergency_id: str, reason: str, ts: datetime) -> None:
+        self.emergencies[emergency_id]["calls"].append({"ts": ts, "reason": reason})
+
+    def mark_evacuated(self, emergency_id: str, ts: datetime) -> None:
+        self.emergencies[emergency_id]["evacuated_at"] = ts
+
+    def mark_not_evacuated(self, emergency_id: str) -> None:
+        self.emergencies[emergency_id]["not_evacuated_alert"] = True
+
+    def close_emergency(self, emergency_id: str, ts: datetime) -> None:
+        self.emergencies[emergency_id]["ended_at"] = ts

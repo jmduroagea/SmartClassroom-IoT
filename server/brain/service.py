@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import Callable, Dict, List
 
 from common import topics
@@ -67,6 +68,13 @@ class Brain:
             "system_event": lambda a: self._repo.log_system(a["event"], a["device"], a["detail"], self._now()),
             "save_temperature": lambda a: self._repo.log_env(a["value"], self._now()),
             "register_card": lambda a: self._repo.save_user(a["card_id"], a["name"]),
+            "open_emergency_record": self._open_emergency_record,
+            "emergency_reading": lambda a: self._repo.add_emergency_reading(a["emergency_id"], a["value"], self._now()),
+            "emergency_call": lambda a: self._repo.add_emergency_call(a["emergency_id"], a["reason"], self._now()),
+            "emergency_evacuated": lambda a: self._repo.mark_evacuated(a["emergency_id"], self._now()),
+            "emergency_not_evacuated": lambda a: self._repo.mark_not_evacuated(a["emergency_id"]),
+            "close_emergency_record": lambda a: self._repo.close_emergency(a["emergency_id"], self._now()),
+            "reset_detector": lambda a: self.detector.reset(),
         }
 
     def start(self) -> None:
@@ -119,9 +127,10 @@ class Brain:
             actions = self.machine.handle_register_card(data["card_id"], data["name"])
         elif action == "simulate_emergency":
             actions = self.machine.handle_emergency("simulated", self.machine.last_known_temp)
-        else:  # end_emergency: issue #22
-            logger.warning("web action %r is not implemented yet", action)
-            actions = []
+        else:  # end_emergency
+            actions = self.machine.end_emergency()
+            if not actions:
+                logger.warning("end_emergency received, but there is no emergency")
         self._execute(actions)
 
     def _on_status(self, topic: str, status: Payload) -> None:
@@ -139,6 +148,27 @@ class Brain:
             logger.error("no executor for action %r", action)
             return
         executor(action)
+
+    def _open_emergency_record(self, action: dict) -> None:
+        """One document per emergency, with the readings of the last 30 s already in it.
+        The notification to the units is sent at the same moment (the next action)."""
+        now = self._now()
+        buffer = [
+            {"ts": datetime.fromtimestamp(seconds, timezone.utc), "temp": temp}
+            for seconds, temp in self.detector.readings
+        ]
+        self._repo.create_emergency(action["emergency_id"], {
+            "started_at": now,
+            "ended_at": None,
+            "trigger": action["trigger"],
+            "trigger_temp": action["trigger_temp"],
+            "person": action["person"],
+            "evacuated_at": None,
+            "not_evacuated_alert": False,
+            "units_notified_at": now,
+            "calls": [],
+            "readings": buffer,
+        })
 
     def _alert_units(self, action: dict) -> None:
         self._bus.publish(

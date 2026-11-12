@@ -32,6 +32,7 @@ class StateMachine:
         self.current_user_name = None
         self.emergency_id = None
         self.emergency_trigger = None
+        self.locked_before_emergency = False
         self.last_temp_save_time = 0.0
         self.last_known_temp = None
         self.current_timer = None
@@ -167,11 +168,19 @@ class StateMachine:
             return []
         self._cancel_timer()
         self.fan_speed = 0
-        person = self.current_user_name if self.state == State.INSIDE else None
+        inside = self.state == State.INSIDE
+        person = self.current_user_name if inside else None
+        # The emergency lifts the lock; the web must see it unlocked when it ends.
+        self.locked_before_emergency = self.state == State.LOCKED
         self.state = State.EMERGENCY
         self.emergency_id = self.clock.now().strftime(self.EMERGENCY_ID_FORMAT)
         self.emergency_trigger = trigger
+        record_person = {"card_id": self.current_user_card, "name": self.current_user_name} if inside else None
         return [
+            {
+                "type": "open_emergency_record", "emergency_id": self.emergency_id,
+                "trigger": trigger, "trigger_temp": temp, "person": record_person,
+            },
             {"type": "set_fan", "speed": 0},
             {"type": "set_led", "color": "red", "mode": "blink"},
             {"type": "set_alarm", "enabled": True},
@@ -179,6 +188,37 @@ class StateMachine:
             {"type": "set_pir", "enabled": False},
             {"type": "alert_units", "emergency_id": self.emergency_id, "temp": temp, "person": person},
         ]
+
+    def end_emergency(self) -> list:
+        """Ends the emergency from the web and goes back to IDLE (also if it started in LOCKED).
+        Whoever was still inside gets an emergency_end exit. Outside an emergency: nothing."""
+        if self.state != State.EMERGENCY:
+            return []
+        actions = [
+            {"type": "set_alarm", "enabled": False},
+            {"type": "set_led", "color": "red", "mode": "off"},
+            {"type": "set_fan", "speed": 0},
+            {"type": "set_mic", "enabled": False},
+            {"type": "set_pir", "enabled": True},
+        ]
+        if self.locked_before_emergency:
+            actions.append({"type": "system_event", "event": "unlocked", "device": "brain", "detail": "emergency ended"})
+        if self.current_user_card is not None:
+            actions.append({
+                "type": "access", "access": "emergency_end",
+                "card_id": self.current_user_card, "name": self.current_user_name,
+            })
+        actions.append({"type": "close_emergency_record", "emergency_id": self.emergency_id})
+        actions.append({"type": "reset_detector"})
+        self.state = State.IDLE
+        self.failed_attempts = 0
+        self.fan_speed = 0
+        self.current_user_card = None
+        self.current_user_name = None
+        self.emergency_id = None
+        self.emergency_trigger = None
+        self.locked_before_emergency = False
+        return actions
 
     def handle_fan_command(self, command: dict) -> list:
         """Handles external fan commands."""
@@ -188,16 +228,17 @@ class StateMachine:
         return [{"type": "set_fan", "speed": speed}]
 
     def handle_temperature(self, timestamp: float, temp: float) -> list:
-        """Saves temperature readings periodically."""
+        """Saves one reading every 10 s in env and, during an emergency, every reading
+        in the emergency record too (so the chart also shows the rise)."""
         actions = []
         self.last_known_temp = temp
-        if self.state == State.EMERGENCY:
-            return actions
 
         time_diff = timestamp - self.last_temp_save_time
         if time_diff >= self.TEMP_SAVE_INTERVAL_SECONDS:
             self.last_temp_save_time = timestamp
             actions.append({"type": "save_temperature", "value": temp})
+        if self.state == State.EMERGENCY:
+            actions.append({"type": "emergency_reading", "emergency_id": self.emergency_id, "value": temp})
         return actions
 
     def handle_voice_command(self, command: str) -> list:

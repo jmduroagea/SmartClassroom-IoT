@@ -29,3 +29,27 @@ class RepositoryPort(Protocol):
     def log_motion(self, detected: bool, ts: datetime) -> None:
         """Logs PIR motion sensor events."""
         ...
+
+    def create_emergency(self, emergency_id: str, record: Dict[str, Any]) -> None:
+        """Creates the record of a new emergency (one document per emergency)."""
+        ...
+
+    def add_emergency_reading(self, emergency_id: str, temp: float, ts: datetime) -> None:
+        """Adds a temperature reading to the record of an emergency."""
+        ...
+
+    def add_emergency_call(self, emergency_id: str, reason: str, ts: datetime) -> None:
+        """Adds a simulated call (help or not_evacuated) to the record of an emergency."""
+        ...
+
+    def mark_evacuated(self, emergency_id: str, ts: datetime) -> None:
+        """Saves when the person who was inside left during the emergency."""
+        ...
+
+    def mark_not_evacuated(self, emergency_id: str) -> None:
+        """Saves that the person was still inside after 2 minutes."""
+        ...
+
+    def close_emergency(self, emergency_id: str, ts: datetime) -> None:
+        """Saves when the emergency ended."""
+        ...
