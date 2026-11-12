@@ -6,7 +6,7 @@ from common import messages
 from room.core.voice import ALL_PHRASES, PHRASES, WAKE_WORDS, command_for
 
 
-@pytest.mark.parametrize("wake", ["ok computer", "okay computer", "computer"], ("turn off the fan", "off"))
+@pytest.mark.parametrize("wake", ["ok computer", "okay computer", "computer"])
 @pytest.mark.parametrize(
     "phrase, command",
     [
@@ -14,6 +14,7 @@ from room.core.voice import ALL_PHRASES, PHRASES, WAKE_WORDS, command_for
         ("i'm cold", "cold"),
         ("what's the temperature", "temp"),
         ("help", "help"),
+        ("turn off the fan", "off"),
     ],
 )
 def test_every_phrase_after_the_wake_word_gives_its_command(wake, phrase, command):
