@@ -35,11 +35,11 @@ services:
       retries: 15
 
   mongo:
-    image: mongo:7.0                           # provisional: must match etu-web2's version
+    image: mongo:4.0                           # same version as etu-web2 (wire version 7)
     tmpfs: [/data/db]                          # in memory: every start is a clean database
     networks: [db]
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 2s
       retries: 15
 
