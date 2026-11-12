@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from common.clock import FAKE_START, FakeClock
 from server.brain.adapters.fake_repository import FakeRepository
+from server.brain.core.emergency_detector import JUMP_THRESHOLD_DEGREES
 from server.brain.service import Brain, LockedClock
 
 GLORIA = {"card_id": "CARD_GLORIA", "name": "Gloria"}
@@ -150,15 +151,15 @@ def test_pi_going_offline_is_saved(brain):
 # --- Emergency -----------------------------------------------------------------
 
 
-def test_temperature_rise_declares_the_emergency(brain):
+def test_temperature_jump_declares_the_emergency(brain):
+    hot = BASE + JUMP_THRESHOLD_DEGREES + 1
     scan(brain, "CARD_GLORIA")
-    for _ in range(16):  # 32 s at room temperature: the 30 s window is full
-        reading(brain, BASE)
-    reading(brain, BASE + 6)
+    reading(brain, BASE)
+    reading(brain, hot)  # the jump
     assert brain.bus.published_on(topics.ALERT_UNITS) == []
-    reading(brain, BASE + 6)  # second reading in a row
+    reading(brain, hot)  # it stays high: confirmed
     [alert] = brain.bus.published_on(topics.ALERT_UNITS)
-    assert alert["temp"] == BASE + 6
+    assert alert["temp"] == hot
     assert alert["person"] == "Gloria"
     assert alert["emergency_id"].startswith("em-")
     assert brain.bus.published_on(topics.DOOR_ALARM) == [{"enabled": True}]

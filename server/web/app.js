@@ -37,8 +37,10 @@ const MAX_ACCESS_LIMIT = 200;
 // A rejected card is offered for registration only for a short while.
 const LAST_UNKNOWN_MINUTES = 10;
 const MS_PER_MINUTE = 60 * 1000;
-// Early warning: the temperature has gone up this much within the window, but not
-// yet the 5 °C that starts an emergency. Same 30 s window as the brain's detector.
+// Early warning: the temperature has gone up this much within the window. The
+// brain only declares an emergency on a sudden jump between two readings
+// (JUMP_THRESHOLD_DEGREES in emergency_detector.py), so this shows a fast climb
+// that is not a jump. Keep it below that threshold.
 const RISING_WINDOW_SECONDS = 30;
 const RISING_WARNING_DEGREES = 3;
 const WEB_CMD_QOS = 1;
