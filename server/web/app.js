@@ -36,6 +36,10 @@ const MAX_ACCESS_LIMIT = 200;
 // A rejected card is offered for registration only for a short while.
 const LAST_UNKNOWN_MINUTES = 10;
 const MS_PER_MINUTE = 60 * 1000;
+// Early warning: the temperature has gone up this much within the window, but not
+// yet the 5 °C that starts an emergency. Same 30 s window as the brain's detector.
+const RISING_WINDOW_SECONDS = 30;
+const RISING_WARNING_DEGREES = 3;
 const WEB_CMD_QOS = 1;
 const FAN_SPEEDS = [0, 1, 2, 3];
 
@@ -212,6 +216,22 @@ async function buildReport(db, from, to, now) {
   };
 }
 
+// How much the temperature has gone up in the last RISING_WINDOW_SECONDS
+// (newest reading minus the lowest one), or null below the warning level.
+// Readings older than the window are left out, so the warning goes away by
+// itself once the temperature stops rising or the readings stop arriving.
+async function risingBy(db, now) {
+  const since = new Date(now.getTime() - RISING_WINDOW_SECONDS * MS_PER_SECOND);
+  const readings = await db.collection('env').find({ ts: { $gte: since } }).sort({ ts: 1 }).toArray();
+  if (readings.length < 2) {
+    return null;
+  }
+  const newest = readings[readings.length - 1].temp;
+  const lowest = Math.min(...readings.map((r) => r.temp));
+  const rise = Math.round((newest - lowest) * 10) / 10;
+  return rise >= RISING_WARNING_DEGREES ? rise : null;
+}
+
 // The emergency wins over the lock: an emergency lifts the lock (specification v4).
 function systemState(emergency, lockEvent) {
   if (emergency) {
@@ -258,7 +278,7 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
   app.get('/api/status', async (req, res) => {
     try {
       const db = await getDb();
-      const [access, env, fan, lockEvent, door, room, emergencyDoc] = await Promise.all([
+      const [access, env, fan, lockEvent, door, room, emergencyDoc, rising] = await Promise.all([
         // The person inside is the last 'in' without a later exit of any kind.
         last(db, 'access_log', { type: { $in: ['in', ...EXIT_TYPES] } }),
         last(db, 'env'),
@@ -267,6 +287,7 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
         last(db, 'system_log', { device: 'door', event: { $in: ['online', 'offline'] } }),
         last(db, 'system_log', { device: 'room', event: { $in: ['online', 'offline'] } }),
         last(db, 'emergencies', { ended_at: null }, 'started_at'),
+        risingBy(db, now()),
       ]);
       const emergency = summarizeEmergency(emergencyDoc);
       res.json({
@@ -274,6 +295,7 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
         inside: access && access.type === 'in' ? access.name : null,
         temperature: env ? env.temp : null,
         temperatureTs: env ? env.ts : null,
+        risingBy: emergency ? null : rising,
         fanSpeed: fan ? fan.speed : 0,
         devices: { door: door ? door.event : 'unknown', room: room ? room.event : 'unknown' },
         emergency,
@@ -450,5 +472,5 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
 module.exports = {
   createApp, passwordMatches, WEB_CMD_TOPIC, WEB_CMD_QOS, HISTORY_LIMIT, MAX_HOURS, DEFAULT_HOURS,
   MAX_REPORT_DAYS, ACCESS_TYPES, DEFAULT_ACCESS_LIMIT, MAX_ACCESS_LIMIT,
-  LAST_UNKNOWN_MINUTES,
+  LAST_UNKNOWN_MINUTES, RISING_WINDOW_SECONDS, RISING_WARNING_DEGREES,
 };
