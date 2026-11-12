@@ -106,6 +106,9 @@ class MongoRepository(RepositoryPort):
     def mark_not_evacuated(self, emergency_id: str) -> None:
         self._update_emergency(emergency_id, {"$set": {"not_evacuated_alert": True}}, "mark_not_evacuated")
 
+    def close_emergency(self, emergency_id: str, ts: datetime) -> None:
+        self._update_emergency(emergency_id, {"$set": {"ended_at": ts}}, "close_emergency")
+
     def _update_emergency(self, emergency_id: str, update: Dict[str, Any], operation: str) -> None:
         try:
             self.emergencies_col.update_one({"_id": emergency_id}, update)

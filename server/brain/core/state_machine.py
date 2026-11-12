@@ -186,6 +186,34 @@ class StateMachine:
             {"type": "alert_units", "emergency_id": self.emergency_id, "temp": temp, "person": person},
         ]
 
+    def end_emergency(self) -> list:
+        """Ends the emergency from the web and goes back to IDLE (also if it started in LOCKED).
+        Whoever was still inside gets an emergency_end exit. Outside an emergency: nothing."""
+        if self.state != State.EMERGENCY:
+            return []
+        actions = [
+            {"type": "set_alarm", "enabled": False},
+            {"type": "set_led", "color": "red", "mode": "off"},
+            {"type": "set_fan", "speed": 0},
+            {"type": "set_mic", "enabled": False},
+            {"type": "set_pir", "enabled": True},
+        ]
+        if self.current_user_card is not None:
+            actions.append({
+                "type": "access", "access": "emergency_end",
+                "card_id": self.current_user_card, "name": self.current_user_name,
+            })
+        actions.append({"type": "close_emergency_record", "emergency_id": self.emergency_id})
+        actions.append({"type": "reset_detector"})
+        self.state = State.IDLE
+        self.failed_attempts = 0
+        self.fan_speed = 0
+        self.current_user_card = None
+        self.current_user_name = None
+        self.emergency_id = None
+        self.emergency_trigger = None
+        return actions
+
     def handle_fan_command(self, command: dict) -> list:
         """Handles external fan commands."""
         if self.state == State.EMERGENCY:

@@ -49,3 +49,7 @@ class RepositoryPort(Protocol):
     def mark_not_evacuated(self, emergency_id: str) -> None:
         """Saves that the person was still inside after 2 minutes."""
         ...
+
+    def close_emergency(self, emergency_id: str, ts: datetime) -> None:
+        """Saves when the emergency ended."""
+        ...
