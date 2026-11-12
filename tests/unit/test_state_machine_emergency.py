@@ -193,3 +193,97 @@ class TestEmergency(unittest.TestCase):
         self.clock.advance(120)
         actions = self.sm.handle_emergency("simulated")
         self.assertEqual(actions[0]["emergency_id"], "em-20261110T090200")
+
+    # --- Evacuation, 2-minute timeout and "help" voice command (#21: T16, T17, T18) ---
+
+    def test_person_inside_scans_out_and_is_marked_evacuated(self):  # T16
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        actions = self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
+        self.assertEqual(actions, [
+            {"type": "access", "access": "evacuated", "card_id": GLORIA_CARD, "name": "Gloria"},
+            {"type": "emergency_evacuated", "emergency_id": EMERGENCY_ID},
+        ])
+        self.assertEqual(self.sm.state, State.EMERGENCY)
+        self.assertIsNone(self.sm.current_user_card)
+
+    def test_other_card_during_emergency_is_ignored(self):  # T16
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.assertEqual(self.sm.handle_card("OTHER_CARD", is_known=True, user_name="Other"), [])
+        self.assertEqual(self.sm.handle_card("UNKNOWN_CARD", is_known=False), [])
+        self.assertEqual(self.sm.current_user_card, GLORIA_CARD)
+
+    def test_card_scan_during_emergency_when_nobody_was_inside_is_ignored(self):  # T16
+        self.sm.handle_emergency("rate", TEMP)
+        self.assertEqual(self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria"), [])
+
+    def test_end_after_evacuation_does_not_log_duplicate_exit(self):  # T16
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
+        actions = self.sm.end_emergency()
+        self.assertFalse(any(a.get("type") == "access" for a in actions))
+
+    def test_not_evacuated_after_2_minutes_triggers_automatic_call(self):  # T17
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.clock.advance(119.0)
+        self.assertEqual(self.emitted, [])
+        self.clock.advance(1.0)
+        self.assertEqual(self.emitted, [
+            {"type": "emergency_not_evacuated", "emergency_id": EMERGENCY_ID},
+            {"type": "emergency_call", "emergency_id": EMERGENCY_ID, "reason": "not_evacuated"},
+            {"type": "alert_call", "emergency_id": EMERGENCY_ID, "reason": "not_evacuated"},
+        ])
+
+    def test_evacuation_before_2_minutes_cancels_automatic_call(self):  # T16 + T17
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.clock.advance(60.0)
+        self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
+        self.clock.advance(120.0)
+        self.assertEqual(self.emitted, [])
+
+    def test_no_automatic_call_after_2_minutes_when_nobody_was_inside(self):  # T17
+        self.sm.handle_emergency("rate", TEMP)
+        self.clock.advance(180.0)
+        self.assertEqual(self.emitted, [])
+
+    def test_end_emergency_before_2_minutes_cancels_automatic_call(self):  # T17
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.clock.advance(60.0)
+        self.sm.end_emergency()
+        self.clock.advance(120.0)
+        self.assertEqual(self.emitted, [])
+
+    def test_help_voice_command_inside_triggers_call_without_emergency(self):  # T18
+        self.enter()
+        actions = self.sm.handle_voice_command("help")
+        self.assertEqual(actions, [
+            {"type": "alert_call", "emergency_id": None, "reason": "help"},
+            {"type": "system_event", "event": "help_call", "device": "room", "detail": ""},
+            {"type": "say", "text": "Emergency services have been called."},
+        ])
+        self.assertEqual(self.sm.state, State.INSIDE)
+
+    def test_help_voice_command_during_emergency_triggers_call_with_emergency_id(self):  # T18
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        actions = self.sm.handle_voice_command("help")
+        self.assertEqual(actions, [
+            {"type": "alert_call", "emergency_id": EMERGENCY_ID, "reason": "help"},
+            {"type": "emergency_call", "emergency_id": EMERGENCY_ID, "reason": "help"},
+            {"type": "say", "text": "Emergency services have been called."},
+        ])
+        self.assertEqual(self.sm.state, State.EMERGENCY)
+
+    def test_help_voice_command_ignored_outside_inside_and_emergency(self):  # T18
+        self.assertEqual(self.sm.handle_voice_command("help"), [])
+        self.sm.handle_pir()
+        self.assertEqual(self.sm.handle_voice_command("help"), [])
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.end_emergency()
+        self.lock()
+        self.assertEqual(self.sm.handle_voice_command("help"), [])
