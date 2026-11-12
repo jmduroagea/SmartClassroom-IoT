@@ -107,6 +107,7 @@ class TestFakeRepositoryEmergencies(unittest.TestCase):
         repo.add_emergency_call(EMERGENCY_ID, "help", now)
         repo.mark_evacuated(EMERGENCY_ID, now)
         repo.mark_not_evacuated(EMERGENCY_ID)
+        repo.close_emergency(EMERGENCY_ID, now)
 
         record = repo.emergencies[EMERGENCY_ID]
         self.assertEqual(record["_id"], EMERGENCY_ID)
@@ -114,6 +115,7 @@ class TestFakeRepositoryEmergencies(unittest.TestCase):
         self.assertEqual(record["calls"], [{"ts": now, "reason": "help"}])
         self.assertEqual(record["evacuated_at"], now)
         self.assertTrue(record["not_evacuated_alert"])
+        self.assertEqual(record["ended_at"], now)
 
 
 class TestMongoRepositoryEmergencies(unittest.TestCase):
@@ -155,6 +157,11 @@ class TestMongoRepositoryEmergencies(unittest.TestCase):
         self.repo.mark_not_evacuated(EMERGENCY_ID)
         self.emergencies.update_one.assert_any_call({"_id": EMERGENCY_ID}, {"$set": {"evacuated_at": now}})
         self.emergencies.update_one.assert_any_call({"_id": EMERGENCY_ID}, {"$set": {"not_evacuated_alert": True}})
+
+    def test_close_sets_the_end_time(self):
+        now = datetime.now(timezone.utc)
+        self.repo.close_emergency(EMERGENCY_ID, now)
+        self.emergencies.update_one.assert_called_once_with({"_id": EMERGENCY_ID}, {"$set": {"ended_at": now}})
 
     def test_a_database_error_is_logged_and_does_not_stop_the_brain(self):  # T12
         self.emergencies.update_one.side_effect = PyMongoError("Connection lost")

@@ -75,3 +75,6 @@ class FakeRepository(RepositoryPort):
 
     def mark_not_evacuated(self, emergency_id: str) -> None:
         self.emergencies[emergency_id]["not_evacuated_alert"] = True
+
+    def close_emergency(self, emergency_id: str, ts: datetime) -> None:
+        self.emergencies[emergency_id]["ended_at"] = ts

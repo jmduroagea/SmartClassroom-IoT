@@ -229,10 +229,69 @@ def test_calls_and_evacuation_are_saved_in_the_record(brain):
     assert record["not_evacuated_alert"] is True
 
 
-def test_end_emergency_does_not_break_anything_yet(brain):
-    send(brain, topics.WEB_CMD, action="simulate_emergency")
+def end(brain):
     send(brain, topics.WEB_CMD, action="end_emergency")
+
+
+def hot_emergency(brain):
+    """Room temperature for 32 s, then 2 readings 6 degrees higher: the emergency starts."""
+    for _ in range(16):
+        reading(brain, BASE)
+    reading(brain, BASE + 6)
+    reading(brain, BASE + 6)
+    assert len(brain.bus.published_on(topics.ALERT_UNITS)) == 1
+
+
+def test_end_closes_the_record_and_switches_everything_back(brain):
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    brain.clock.advance(30)
+    end(brain)
+    assert only_record(brain)["ended_at"] == FAKE_START + timedelta(seconds=30)
+    assert brain.bus.published_on(topics.DOOR_ALARM)[-1] == {"enabled": False}
+    assert brain.bus.published_on(topics.DOOR_LED_CMD)[-1] == {"color": "red", "mode": "off"}
+    assert brain.bus.published_on(topics.ROOM_MIC_ENABLE)[-1] == {"enabled": False}
+    assert brain.bus.published_on(topics.DOOR_PIR_ENABLE)[-1] == {"enabled": True}
+    assert brain.bus.published_on(topics.ROOM_FAN_CMD)[-1] == {"speed": 0}
+
+
+def test_end_without_evacuation_logs_an_emergency_end_exit(brain):  # T25
+    scan(brain, "CARD_GLORIA")
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
+    end(brain)
+    last = brain.repo.access_logs[-1]
+    assert (last["type"], last["card_id"], last["name"]) == ("emergency_end", "CARD_GLORIA", "Gloria")
+    scan(brain, "CARD_GLORIA")  # to enter again she must scan
+    assert brain.repo.access_logs[-1]["type"] == "in"
+
+
+def test_end_with_the_probe_still_hot_does_not_start_another_emergency(brain):  # T24
+    hot_emergency(brain)
+    end(brain)
+    # The probe is still in the hot water and keeps warming up: 0.5 degrees every
+    # reading, so the 30 s window would see a rise of 7 degrees. Detection is paused.
+    for step in range(29):  # 58 s
+        reading(brain, BASE + 6 + 0.5 * step)
+    assert len(brain.bus.published_on(topics.ALERT_UNITS)) == 1
+    assert len(brain.repo.emergencies) == 1
+
+
+def test_after_the_pause_a_new_rise_starts_a_new_emergency(brain):  # T24
+    hot_emergency(brain)
+    end(brain)
+    for _ in range(35):  # pause of 60 s, then the 30 s window fills again, still hot
+        reading(brain, BASE + 6)
+    reading(brain, BASE + 12)
+    reading(brain, BASE + 12)
+    assert len(brain.bus.published_on(topics.ALERT_UNITS)) == 2
+    assert len(brain.repo.emergencies) == 2
+
+
+def test_end_without_an_emergency_only_logs_a_warning(brain, caplog):
+    end(brain)
+    assert "no emergency" in caplog.text
+    assert brain.bus.published_on(topics.DOOR_ALARM) == []
     scan(brain, "CARD_GLORIA")  # the brain keeps answering
+    assert brain.repo.access_logs[-1]["type"] == "in"
 
 
 # --- Threads -------------------------------------------------------------------

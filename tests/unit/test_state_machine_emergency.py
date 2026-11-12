@@ -113,3 +113,68 @@ class TestEmergency(unittest.TestCase):
     def test_no_emergency_readings_outside_an_emergency(self):
         actions = self.sm.handle_temperature(100.0, 22.0)
         self.assertEqual([a["type"] for a in actions], ["save_temperature"])
+
+    # --- End of the emergency (#22) ---
+
+    def end_actions(self, person_inside):
+        actions = [
+            {"type": "set_alarm", "enabled": False},
+            {"type": "set_led", "color": "red", "mode": "off"},
+            {"type": "set_fan", "speed": 0},
+            {"type": "set_mic", "enabled": False},
+            {"type": "set_pir", "enabled": True},
+        ]
+        if person_inside:
+            actions.append({"type": "access", "access": "emergency_end", "card_id": GLORIA_CARD, "name": "Gloria"})
+        actions.append({"type": "close_emergency_record", "emergency_id": EMERGENCY_ID})
+        actions.append({"type": "reset_detector"})
+        return actions
+
+    def test_end_with_nobody_inside(self):
+        self.sm.handle_emergency("simulated")
+        self.assertEqual(self.sm.end_emergency(), self.end_actions(person_inside=False))
+        self.assertEqual(self.sm.state, State.IDLE)
+
+    def test_end_without_evacuation_logs_an_emergency_end_exit(self):  # T25
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.assertEqual(self.sm.end_emergency(), self.end_actions(person_inside=True))
+        self.assertEqual(self.sm.state, State.IDLE)
+        self.assertIsNone(self.sm.current_user_card)
+
+    def test_after_the_end_the_person_must_scan_again_to_enter(self):  # T25
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.end_emergency()
+        actions = self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
+        self.assertIn({"type": "access", "access": "in", "card_id": GLORIA_CARD, "name": "Gloria"}, actions)
+        self.assertEqual(self.sm.state, State.INSIDE)
+
+    def test_an_emergency_that_started_locked_ends_in_idle(self):  # T21
+        self.lock()
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.end_emergency()
+        self.assertEqual(self.sm.state, State.IDLE)
+        self.assertEqual(self.sm.failed_attempts, 0)
+        actions = self.sm.handle_card(GLORIA_CARD, is_known=True, user_name="Gloria")
+        self.assertEqual(self.sm.state, State.INSIDE)
+        self.assertNotIn({"type": "set_led", "color": "red", "mode": "pulse"}, actions)
+
+    def test_end_outside_an_emergency_does_nothing(self):
+        self.assertEqual(self.sm.end_emergency(), [])
+        self.enter()
+        self.assertEqual(self.sm.end_emergency(), [])
+        self.assertEqual(self.sm.state, State.INSIDE)
+
+    def test_fan_works_again_after_the_end(self):
+        self.enter()
+        self.sm.handle_emergency("rate", TEMP)
+        self.sm.end_emergency()
+        self.assertEqual(self.sm.handle_web_fan(2), [{"type": "set_fan", "speed": 2}])
+
+    def test_a_new_emergency_after_the_end_gets_a_new_id(self):
+        self.sm.handle_emergency("simulated")
+        self.sm.end_emergency()
+        self.clock.advance(120)
+        actions = self.sm.handle_emergency("simulated")
+        self.assertEqual(actions[0]["emergency_id"], "em-20261110T090200")

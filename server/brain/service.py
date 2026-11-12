@@ -73,6 +73,8 @@ class Brain:
             "emergency_call": lambda a: self._repo.add_emergency_call(a["emergency_id"], a["reason"], self._now()),
             "emergency_evacuated": lambda a: self._repo.mark_evacuated(a["emergency_id"], self._now()),
             "emergency_not_evacuated": lambda a: self._repo.mark_not_evacuated(a["emergency_id"]),
+            "close_emergency_record": lambda a: self._repo.close_emergency(a["emergency_id"], self._now()),
+            "reset_detector": lambda a: self.detector.reset(),
         }
 
     def start(self) -> None:
@@ -125,9 +127,10 @@ class Brain:
             actions = self.machine.handle_register_card(data["card_id"], data["name"])
         elif action == "simulate_emergency":
             actions = self.machine.handle_emergency("simulated", self.machine.last_known_temp)
-        else:  # end_emergency: issue #22
-            logger.warning("web action %r is not implemented yet", action)
-            actions = []
+        else:  # end_emergency
+            actions = self.machine.end_emergency()
+            if not actions:
+                logger.warning("end_emergency received, but there is no emergency")
         self._execute(actions)
 
     def _on_status(self, topic: str, status: Payload) -> None:
