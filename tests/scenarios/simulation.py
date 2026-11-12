@@ -32,6 +32,8 @@ BROKER_PORT = 1883
 WEB_URL = "http://127.0.0.1:3001"
 
 ALL_TOPICS = f"{topics.PREFIX}/#"
+SIM_TOPICS = "sim/#"  # what the fake hardware reports (see the README)
+SIM_QOS = 1
 LISTEN_QOS = 2  # receive every message with the QoS it was published with
 
 # Timeouts, in seconds
@@ -83,7 +85,23 @@ def stop() -> None:
 
 
 def logs() -> str:
-    return docker_compose("logs", "--no-color", "--tail", str(LOG_LINES), "brain", "web")
+    return docker_compose("logs", "--no-color", "--tail", str(LOG_LINES), "brain", "web", "door")
+
+
+def can_connect(service: str, host: str, port: int) -> bool:
+    """True if a program inside the container can open a connection to host:port."""
+    code = (
+        "import socket, sys\n"
+        "try:\n"
+        f"    socket.create_connection(({host!r}, {port}), timeout={HTTP_TIMEOUT})\n"
+        "except OSError:\n"
+        "    sys.exit(1)\n"
+    )
+    result = subprocess.run(
+        ["docker", "compose", "exec", "-T", service, "python", "-c", code],
+        cwd=REPO_ROOT, capture_output=True, timeout=DOCKER_TIMEOUT,
+    )
+    return result.returncode == 0
 
 
 def now_ts() -> str:
@@ -150,7 +168,7 @@ class Simulation:
             time.sleep(POLL_INTERVAL)
 
     def _on_connect(self, client, _userdata, _flags, _reason_code, _properties) -> None:
-        client.subscribe(ALL_TOPICS, qos=LISTEN_QOS)
+        client.subscribe([(ALL_TOPICS, LISTEN_QOS), (SIM_TOPICS, LISTEN_QOS)])
 
     def _on_message(self, _client, _userdata, message) -> None:
         payload = message.payload.decode("utf-8", "replace")
@@ -168,6 +186,10 @@ class Simulation:
     def publish_raw(self, topic: str, payload: str) -> None:
         """Publish any text, even an invalid message (robustness tests only)."""
         self._client.publish(topic, payload, qos=messages.qos(topic)).wait_for_publish(HTTP_TIMEOUT)
+
+    def publish_sim(self, topic: str, **fields) -> None:
+        """Act on the fake hardware: plain JSON on a sim/ topic, outside the contract."""
+        self._client.publish(topic, json.dumps(fields), qos=SIM_QOS).wait_for_publish(HTTP_TIMEOUT)
 
     def messages_on(self, topic: str) -> List[dict]:
         """Every message received on a topic since the last forget_messages()."""

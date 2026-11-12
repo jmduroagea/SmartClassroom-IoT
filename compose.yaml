@@ -22,6 +22,21 @@ services:
       broker: { condition: service_healthy }
     restart: on-failure
 
+  # The Door Pi with fake hardware, driven by the scenario tests on sim/ topics.
+  # Only on iot, like the real Door Pi: it reaches the broker and nothing else.
+  door:
+    <<: *python
+    command: python -m door.main --sim-topics
+    volumes:
+      - ./door:/app/door:ro
+      - ./common:/app/common:ro
+    environment:
+      MQTT_HOST: broker
+    networks: [iot]
+    depends_on:
+      broker: { condition: service_healthy }
+    restart: on-failure
+
   broker:
     image: eclipse-mosquitto:2.0.11            # same version as the server Pi
     volumes:
