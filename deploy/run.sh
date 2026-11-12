@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Starts one program of this Pi with the settings of its .env file.
 #
-#     ./deploy/run.sh door     # on the Door Pi
-#     ./deploy/run.sh room     # on the Room Pi
-#     ./deploy/run.sh brain    # on the Server Pi (one terminal)
-#     ./deploy/run.sh web      # on the Server Pi (another terminal)
+#     ./deploy/run.sh door        # on the Door Pi
+#     ./deploy/run.sh room        # on the Room Pi
+#     ./deploy/run.sh brain       # on the Server Pi
+#     ./deploy/run.sh web         # on the Server Pi
+#     ./deploy/run.sh emergency   # on the Server Pi: the simulated emergency centre
 #
+# On the Server Pi, ./deploy/start_server.sh starts its three programs at once.
 # Ctrl+C stops it. The programs only read environment variables, so this
 # script is what turns .env into variables.
 set -eu
@@ -24,9 +26,10 @@ set +a
 cd "$REPO_DIR"
 
 case "${1:-}" in
-  door)  exec "$PYTHON" -m door.main ;;
-  room)  exec "$PYTHON" -m room.main ;;
-  brain) exec "$PYTHON" -m server.brain.main ;;
-  web)   cd server/web && exec node server.js ;;
-  *)     echo "usage: $0 door|room|brain|web"; exit 2 ;;
+  door)      exec "$PYTHON" -m door.main ;;
+  room)      exec "$PYTHON" -m room.main ;;
+  brain)     exec "$PYTHON" -m server.brain.main ;;
+  web)       cd server/web && exec node server.js ;;
+  emergency) exec "$PYTHON" -m emergency_center.main ;;
+  *)         echo "usage: $0 door|room|brain|web|emergency"; exit 2 ;;
 esac
