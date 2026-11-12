@@ -22,6 +22,7 @@ PHRASES = {
     "i'm cold": "cold",
     "what's the temperature": "temp",
     "help": "help",
+    "turn off the fan": "off",
 }
 
 # Every full phrase the recogniser must know. The Vosk grammar is built from it.

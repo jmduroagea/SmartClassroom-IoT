@@ -3,10 +3,10 @@
 import pytest
 
 from common import messages
-from room.core.voice import ALL_PHRASES, PHRASES, command_for
+from room.core.voice import ALL_PHRASES, PHRASES, WAKE_WORDS, command_for
 
 
-@pytest.mark.parametrize("wake", ["ok computer", "okay computer", "computer"])
+@pytest.mark.parametrize("wake", ["ok computer", "okay computer", "computer"], ("turn off the fan", "off"))
 @pytest.mark.parametrize(
     "phrase, command",
     [
@@ -56,5 +56,6 @@ def test_the_commands_are_the_ones_in_the_contract():
 
 
 def test_the_grammar_has_every_phrase_with_every_wake_word():
-    assert len(ALL_PHRASES) == 12
-    assert "okay computer what's the temperature" in ALL_PHRASES
+       assert len(ALL_PHRASES) == len(WAKE_WORDS) * len(PHRASES)
+       assert "okay computer what's the temperature" in ALL_PHRASES
+       assert "computer turn off the fan" in ALL_PHRASES
