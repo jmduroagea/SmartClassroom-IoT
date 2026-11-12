@@ -37,6 +37,7 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     occupied: 'room occupied',
     evacuated: 'evacuated',
     emergency_end: 'exit closed at end of emergency',
+    forced_exit: 'exit forced from the web',
   };
 
   $scope.accessLabel = function (type) {
@@ -68,9 +69,17 @@ angular.module('smartRoom', []).controller('MainCtrl', function ($scope, $http, 
     }, fail);
   };
 
-  // Passwords for the emergency buttons and Unlock. Only Express checks them,
-  // and each field is cleared after a correct one.
-  $scope.password = { simulate: '', end: '', unlock: '' };
+  $scope.forceExit = function () {
+    $http.post('/api/force-exit', { password: $scope.password.forceExit }).then(function () {
+      $scope.password.forceExit = '';
+      $scope.error = null;
+      refresh();
+    }, fail);
+  };
+
+  // Passwords for the emergency buttons, Unlock and Force exit. Only Express
+  // checks them, and each field is cleared after a correct one.
+  $scope.password = { simulate: '', end: '', unlock: '', forceExit: '' };
 
   function emergencyCommand(route, field) {
     $http.post('/api/emergency/' + route, { password: $scope.password[field] }).then(function () {

@@ -127,6 +127,10 @@ class Brain:
             actions = self.machine.handle_register_card(data["card_id"], data["name"])
         elif action == "simulate_emergency":
             actions = self.machine.handle_emergency("simulated", self.machine.last_known_temp)
+        elif action == "force_exit":
+            actions = self.machine.force_exit()
+            if not actions:
+                logger.warning("force_exit received, but nobody is inside")
         else:  # end_emergency
             actions = self.machine.end_emergency()
             if not actions:

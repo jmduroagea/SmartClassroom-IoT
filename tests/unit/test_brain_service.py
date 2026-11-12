@@ -82,6 +82,33 @@ def test_card_registered_from_the_web_can_enter(brain):
     assert said(brain) == ["Welcome, Jose."]
 
 
+def test_forced_exit_from_the_web_empties_the_room(brain):
+    scan(brain, "CARD_GLORIA")
+    send(brain, topics.WEB_CMD, action="force_exit")
+    last = brain.repo.access_logs[-1]
+    assert (last["type"], last["card_id"], last["name"]) == ("forced_exit", "CARD_GLORIA", "Gloria")
+    assert brain.bus.published_on(topics.ROOM_FAN_CMD)[-1] == {"speed": 0}
+    assert brain.bus.published_on(topics.ROOM_MIC_ENABLE)[-1] == {"enabled": False}
+    assert brain.bus.published_on(topics.DOOR_PIR_ENABLE)[-1] == {"enabled": True}
+    # Nobody is at the door: nothing is said and no LED lights up (only the welcome ones).
+    assert said(brain) == ["Welcome, Gloria."]
+    assert len(brain.bus.published_on(topics.DOOR_LED_CMD)) == 1
+
+
+def test_after_a_forced_exit_the_room_is_not_occupied(brain):
+    send(brain, topics.WEB_CMD, action="new_card", card_id="CARD_JOSE", name="Jose")
+    scan(brain, "CARD_GLORIA")
+    send(brain, topics.WEB_CMD, action="force_exit")
+    scan(brain, "CARD_JOSE")
+    assert said(brain)[-1] == "Welcome, Jose."
+    assert brain.repo.access_logs[-1]["type"] == "in"
+
+
+def test_forced_exit_with_nobody_inside_logs_nothing(brain):
+    send(brain, topics.WEB_CMD, action="force_exit")
+    assert brain.repo.access_logs == []
+
+
 def test_motion_is_saved_and_the_prompt_comes_from_a_timer(brain):
     send(brain, topics.DOOR_MOTION, ts=TS)
     assert len(brain.repo.motion_logs) == 1

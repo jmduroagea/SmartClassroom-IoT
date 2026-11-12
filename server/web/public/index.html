@@ -102,6 +102,14 @@
           </div>
         </div>
       </div>
+      <div class="exit-bar" ng-if="status.inside && status.state !== 'emergency'">
+        <span>Did {{ status.inside }} leave without scanning?</span>
+        <form class="unlock-form" ng-submit="forceExit()">
+          <label for="force-exit-password">Password</label>
+          <input id="force-exit-password" type="password" ng-model="password.forceExit" autocomplete="current-password">
+          <button class="btn" type="submit" ng-disabled="!password.forceExit">Force exit</button>
+        </form>
+      </div>
       <div class="locked-bar" ng-if="status.state === 'locked'">
         <span>
           <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>

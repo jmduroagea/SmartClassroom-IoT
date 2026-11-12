@@ -15,8 +15,9 @@ const express = require('express');
 
 const WEB_CMD_TOPIC = 'glo/web/cmd';
 // Ways of leaving the room (specification v4): a normal exit, an evacuation,
-// or the brain closing the exit when an emergency ends without evacuation.
-const EXIT_TYPES = ['out', 'evacuated', 'emergency_end'];
+// the brain closing the exit when an emergency ends without evacuation, or a
+// forced exit from the web when someone left without scanning.
+const EXIT_TYPES = ['out', 'evacuated', 'emergency_end', 'forced_exit'];
 const HELP_REASON = 'help';
 // How many past emergencies the history shows (decision 1A).
 const HISTORY_LIMIT = 20;
@@ -29,7 +30,7 @@ const MINUTE_FORMAT = '%Y-%m-%dT%H:%M:00Z';
 // Report (#28): at most 31 days (decision 3A); every access type is counted, even with 0.
 const MAX_REPORT_DAYS = 31;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
-const ACCESS_TYPES = ['in', 'out', 'denied', 'occupied', 'evacuated', 'emergency_end'];
+const ACCESS_TYPES = ['in', 'out', 'denied', 'occupied', 'evacuated', 'emergency_end', 'forced_exit'];
 const MS_PER_SECOND = 1000;
 const DEFAULT_ACCESS_LIMIT = 50;
 const MAX_ACCESS_LIMIT = 200;
@@ -444,6 +445,13 @@ function createApp({ broker, getDb, webPassword, now = () => new Date() }) {
   app.post('/api/unlock', (req, res) => {
     if (checkPassword(req, res)) {
       sendCommand(res, { action: 'unlock' });
+    }
+  });
+
+  // Someone left without scanning: the brain logs their exit and goes back to idle.
+  app.post('/api/force-exit', (req, res) => {
+    if (checkPassword(req, res)) {
+      sendCommand(res, { action: 'force_exit' });
     }
   });
 

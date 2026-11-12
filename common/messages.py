@@ -66,6 +66,7 @@ WEB_ACTIONS = {
     "new_card": {"card_id": str, "name": str},
     "simulate_emergency": {},
     "end_emergency": {},
+    "force_exit": {},
 }
 
 # Delivery guarantee per topic: alerts must arrive exactly once (QoS 2)

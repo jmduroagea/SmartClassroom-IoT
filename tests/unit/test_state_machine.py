@@ -159,3 +159,33 @@ class TestStateMachine(unittest.TestCase):
         actions = self.sm.handle_voice_command("hot")
         self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[-1])
         self.assertEqual(actions, [{"type": "say", "text": "The fan is at maximum."}])
+
+    # --- Forced exit from the web (#35) -------------------------------------
+
+    def test_forced_exit_empties_the_room(self):
+        self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
+        self.sm.handle_web_fan(2)
+        actions = self.sm.force_exit()
+        self.assertEqual(actions, [
+            {"type": "access", "access": "forced_exit", "card_id": "CARD_GLORIA", "name": "Gloria"},
+            {"type": "set_fan", "speed": 0},
+            {"type": "set_mic", "enabled": False},
+            {"type": "set_pir", "enabled": True},
+        ])
+        self.assertEqual(self.sm.state, State.IDLE)
+        self.assertEqual(self.sm.fan_speed, 0)
+        self.assertIsNone(self.sm.current_user_card)
+
+    def test_after_a_forced_exit_someone_else_can_enter(self):
+        self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
+        self.sm.force_exit()
+        actions = self.sm.handle_card("CARD_JOSE", is_known=True, user_name="Jose")
+        self.assertEqual(self.sm.state, State.INSIDE)
+        self.assertIn({"type": "access", "access": "in", "card_id": "CARD_JOSE", "name": "Jose"}, actions)
+
+    def test_forced_exit_with_nobody_inside_does_nothing(self):
+        for state in (State.IDLE, State.WAITING_CARD, State.LOCKED, State.EMERGENCY):
+            with self.subTest(state=state):
+                self.sm.state = state
+                self.assertEqual(self.sm.force_exit(), [])
+                self.assertEqual(self.sm.state, state)

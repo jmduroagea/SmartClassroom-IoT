@@ -99,12 +99,13 @@ test('GET /api/users returns the users from the database', async () => {
   assert.deepEqual(res.body, users);
 });
 
-// --- Commands with password: emergencies (T20) and unlock (#31) -------------------
+// --- Commands with password: emergencies (T20), unlock (#31), forced exit (#35) -----
 
 for (const [route, action] of [
   ['/api/emergency/simulate', 'simulate_emergency'],
   ['/api/emergency/end', 'end_emergency'],
   ['/api/unlock', 'unlock'],
+  ['/api/force-exit', 'force_exit'],
 ]) {
   test(`POST ${route} with the right password publishes ${action}`, async () => {
     const { app, broker } = setup();
@@ -130,6 +131,7 @@ for (const [route, body] of [
   ['/api/users', { card_id: '0F00A1B2C3', name: 'Gloria' }],
   ['/api/unlock', { password: PASSWORD }],
   ['/api/emergency/simulate', { password: PASSWORD }],
+  ['/api/force-exit', { password: PASSWORD }],
 ]) {
   test(`POST ${route} with the broker disconnected returns 503`, async () => {
     const { app, broker } = setup({ connected: false });
@@ -173,7 +175,7 @@ test('GET /api/status: nobody inside when the database is empty', async () => {
   assert.deepEqual(body.devices, { door: 'unknown', room: 'unknown' });
 });
 
-for (const exit of ['out', 'evacuated', 'emergency_end']) {
+for (const exit of ['out', 'evacuated', 'emergency_end', 'forced_exit']) {
   test(`GET /api/status: nobody inside after an '${exit}' that follows the 'in'`, async () => {
     const body = await status({
       access_log: [
@@ -539,6 +541,14 @@ test('GET /api/report adds up the visits inside the period', async () => {
   assert.equal(body.occupiedSeconds, 25 * 60);
 });
 
+test('GET /api/report: a forced exit ends the visit and is counted', async () => {
+  const body = await report({
+    access_log: [access('in', '10:10'), access('forced_exit', '10:40')],
+  });
+  assert.equal(body.occupiedSeconds, 30 * 60);
+  assert.equal(body.access.forced_exit, 1);
+});
+
 test('GET /api/report counts a visit that started before the period from its start', async () => {
   const body = await report({ access_log: [access('in', '09:50'), access('out', '10:15')] });
   assert.equal(body.occupiedSeconds, 15 * 60);
@@ -579,7 +589,7 @@ test('GET /api/report counts the access attempts of the period by type', async (
       access('in', '11:00'),
     ],
   });
-  assert.deepEqual(body.access, { in: 1, out: 1, denied: 2, occupied: 1, evacuated: 0, emergency_end: 0 });
+  assert.deepEqual(body.access, { in: 1, out: 1, denied: 2, occupied: 1, evacuated: 0, emergency_end: 0, forced_exit: 0 });
 });
 
 test('GET /api/report gives the average and maximum temperature of the period', async () => {
