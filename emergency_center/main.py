@@ -6,6 +6,8 @@ from common.bus import Payload
 from common.config import load_config
 from common.paho_bus import PahoBus
 
+CLIENT_ID = "emergency-center"
+
 
 def _extract_time(ts: str) -> str:
     """Extract HH:MM:SS without timezone offset from an ISO timestamp."""
@@ -51,7 +53,7 @@ def on_call(topic: str, payload: Payload) -> None:
 
 def main() -> None:
     config = load_config()
-    bus = PahoBus(host=config.mqtt_host)
+    bus = PahoBus(config, CLIENT_ID)
 
     bus.subscribe(topics.ALERT_UNITS, on_units)
     bus.subscribe(topics.ALERT_CALL, on_call)
