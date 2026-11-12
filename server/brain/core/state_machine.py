@@ -23,6 +23,8 @@ class StateMachine:
     TIMER_REMINDER_DELAY = 5.0
     TIMER_TIMEOUT_DELAY = 30.0
     TIMER_EVACUATION_DELAY = 120.0
+    # The temperature is said with one decimal, and without ".0": "21.5", "25"
+    TEMPERATURE_DECIMALS = 1
 
     def __init__(self, clock, emit):
         self.clock = clock
@@ -136,8 +138,7 @@ class StateMachine:
             name_str = user_name or "User"
 
             if self.last_known_temp is not None:
-                rounded_temp = round(self.last_known_temp, 1)
-                text = f"Welcome, {name_str}. The temperature is {rounded_temp} degrees."
+                text = f"Welcome, {name_str}. {self._temperature_sentence()}"
                 actions.append({"type": "say", "text": text})
             else:
                 actions.append({"type": "say", "text": f"Welcome, {name_str}."})
@@ -284,8 +285,13 @@ class StateMachine:
             actions.append({"type": "emergency_reading", "emergency_id": self.emergency_id, "value": temp})
         return actions
 
+    def _temperature_sentence(self) -> str:
+        """The same sentence in the welcome and by voice: 'The temperature is 21.5 degrees.'"""
+        rounded = round(self.last_known_temp, self.TEMPERATURE_DECIMALS)
+        return f"The temperature is {rounded:g} degrees."
+
     def handle_voice_command(self, command: str) -> list:
-        """Handle voice commands ('hot', 'cold', 'off', 'help') in INSIDE, and 'help' in EMERGENCY."""
+        """Handle voice commands ('hot', 'cold', 'off', 'temp', 'help') in INSIDE, and 'help' in EMERGENCY."""
         if self.state not in (State.INSIDE, State.EMERGENCY):
             return []
 
@@ -331,6 +337,12 @@ class StateMachine:
                 current_index = speeds.index(self.fan_speed)
                 self.fan_speed = speeds[current_index - 1]
                 actions.append({"type": "set_fan", "speed": self.fan_speed})
+
+        elif text == "temp":
+              if self.last_known_temp is None:
+                  actions.append({"type": "say", "text": "The temperature is not available yet."})
+              else:
+                  actions.append({"type": "say", "text": self._temperature_sentence()})
 
         elif text == "off":
             if self.fan_speed == 0:

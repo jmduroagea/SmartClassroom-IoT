@@ -166,6 +166,37 @@ class TestStateMachine(unittest.TestCase):
         self.assertEqual(self.sm.handle_voice_command("off"), [])
         self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[2])
 
+    def test_voice_temp_says_the_last_reading(self):
+        self.sm.state = State.INSIDE
+        self.sm.last_known_temp = 21.46
+        actions = self.sm.handle_voice_command("temp")
+        self.assertEqual(actions, [{"type": "say", "text": "The temperature is 21.5 degrees."}])
+
+    def test_voice_temp_says_a_whole_number_without_decimals(self):
+        self.sm.state = State.INSIDE
+        self.sm.last_known_temp = 25.0
+        actions = self.sm.handle_voice_command("temp")
+        self.assertEqual(actions, [{"type": "say", "text": "The temperature is 25 degrees."}])
+
+    def test_voice_temp_before_any_reading(self):
+        self.sm.state = State.INSIDE
+        actions = self.sm.handle_voice_command("temp")
+        self.assertEqual(actions, [{"type": "say", "text": "The temperature is not available yet."}])
+
+    def test_voice_temp_does_not_touch_the_fan(self):
+        self.sm.state = State.INSIDE
+        self.sm.fan_speed = FAN_SPEEDS[2]
+        self.sm.last_known_temp = 21.0
+        self.sm.handle_voice_command("temp")
+        self.assertEqual(self.sm.fan_speed, FAN_SPEEDS[2])
+
+    def test_voice_temp_is_ignored_outside_inside(self):
+        self.sm.last_known_temp = 21.0
+        for state in (State.IDLE, State.WAITING_CARD, State.LOCKED, State.EMERGENCY):
+            with self.subTest(state=state):
+                self.sm.state = state
+                self.assertEqual(self.sm.handle_voice_command("temp"), [])
+
     def test_voice_refused_during_emergency(self):
         self.sm.state = State.EMERGENCY
         actions = self.sm.handle_voice_command("hot")

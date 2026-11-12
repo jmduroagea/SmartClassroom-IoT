@@ -237,8 +237,6 @@ def test_voice_hot_turns_fan_on_when_inside(sim):
     sim.wait_for_message(topics.ROOM_FAN_CMD, lambda order: order["speed"] == FAN_SPEED_ON_HOT)
     fan_moved(sim, FAN_SPEED_ON_HOT)
 
-
-@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_is_answered_when_inside(sim):
     enter(sim, GLORIA, "Gloria")
 
@@ -246,8 +244,6 @@ def test_voice_temperature_is_answered_when_inside(sim):
 
     assert str(round(BASE_TEMPERATURE)) in sim.said(containing="degrees")
 
-
-@pytest.mark.xfail(reason="voice is not in the new brain yet (#67, temp and help)", strict=True)
 def test_voice_temperature_uses_the_latest_reading(sim):
     enter(sim, GLORIA, "Gloria")
     sim.publish_sim(SIM_TEMP, temp=WARMER_TEMPERATURE)
