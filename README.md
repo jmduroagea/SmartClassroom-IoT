@@ -195,6 +195,8 @@ Everything is defined in `compose.yaml` (repository root) and `docker/`.
 - `brain`: starts once the broker is healthy and `setup-db` has finished.
 - `web`: Express + AngularJS on http://localhost:3001.
 - `door`: the Door Pi program (`python -m door.main --sim-topics`) with fake hardware.
+- `room`: the Room Pi program (`python -m room.main --sim-topics`) with fake hardware. Its
+  sensor gives 21 °C exactly, with no noise, until a test publishes another temperature.
 - `emergency_center`: the simulated emergency centre, listening on `glo/alert/#`.
 
 The simulated Pis run their real code with fake hardware, only on the `iot` network. The fakes
@@ -206,10 +208,14 @@ are driven through `sim/` topics and report what they did there:
 | `sim/door/motion` | test → door | `{}`: movement in front of the PIR |
 | `sim/door/led` | door → test | `{"color": "green", "on": true}` |
 | `sim/door/speaker/said` | door → test | `{"text": "Welcome, Gloria."}` |
+| `sim/room/temp` | test → room | `{"temp": 25.0}`: the sensor reads this from now on |
+| `sim/room/voice` | test → room | `{"text": "ok computer i'm hot"}`: a phrase heard |
+| `sim/room/fan` | room → test | `{"speed": 2}`: the fan moved |
 
-A card published on `sim/door/card` goes through the same code path as one read by the RDM6300.
+A card published on `sim/door/card` goes through the same code path as one read by the RDM6300,
+and a phrase on `sim/room/voice` through the same wake word and phrase list as one heard by Vosk.
 Topics starting with `sim/` exist only in the simulation and are not part of the contract
-(`common/messages.py`). The Room Pi container will be added the same way.
+(`common/messages.py`): they travel on their own connection (`common/sim_link.py`).
 
 ### How it reproduces the real system
 

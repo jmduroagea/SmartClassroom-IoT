@@ -37,6 +37,20 @@ services:
       broker: { condition: service_healthy }
     restart: on-failure
 
+  # The Room Pi with fake hardware, the same way: 21 °C until a test says otherwise.
+  room:
+    <<: *python
+    command: python -m room.main --sim-topics
+    volumes:
+      - ./room:/app/room:ro
+      - ./common:/app/common:ro
+    environment:
+      MQTT_HOST: broker
+    networks: [iot]
+    depends_on:
+      broker: { condition: service_healthy }
+    restart: on-failure
+
   broker:
     image: eclipse-mosquitto:2.0.11            # same version as the server Pi
     volumes:

@@ -2,6 +2,7 @@
 
     python -m room.main              # on the Room Pi
     python -m room.main --simulate   # on a laptop: fake sensor, keyboard as microphone
+    python -m room.main --sim-topics # in the Docker simulation: driven on sim/ topics
 
 Settings (broker address, Vosk model) come from the environment: see .env.example.
 """
@@ -18,7 +19,16 @@ from common.config import Config, load_config
 from common.paho_bus import PahoBus
 from room.adapters.ds18b20 import DS18B20Sensor
 from room.adapters.servo_fan import ServoFan
-from room.adapters.simulated import KeyboardMicrophone, PrintFan, SimulatedSensor
+from common.sim_link import SimLink
+from room.adapters.simulated import (
+    SIM_CLIENT_ID,
+    KeyboardMicrophone,
+    PrintFan,
+    SimulatedSensor,
+    TopicFan,
+    TopicMicrophone,
+    TopicSensor,
+)
 from room.adapters.vosk_mic import VoskMicrophone
 from room.core.room_core import RoomCore
 
@@ -34,14 +44,25 @@ def build_hardware(simulate: bool, config: Config):
     return DS18B20Sensor(), ServoFan(), VoskMicrophone(config.vosk_model_path)
 
 
+def build_sim_topics_hardware(config: Config):
+    """Fakes driven by the scenario tests: they share one connection for the sim/ topics."""
+    link = SimLink(config.mqtt_host, config.mqtt_port, SIM_CLIENT_ID)
+    return TopicSensor(link), TopicFan(link), TopicMicrophone(link)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="SmartClassroom Room Pi")
-    parser.add_argument("--simulate", action="store_true", help="fake sensor, keyboard as microphone")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--simulate", action="store_true", help="fake sensor, keyboard as microphone")
+    mode.add_argument("--sim-topics", action="store_true", help="driven on sim/ topics (Docker simulation)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
     config = load_config()
-    sensor, fan, microphone = build_hardware(args.simulate, config)
+    if args.sim_topics:
+        sensor, fan, microphone = build_sim_topics_hardware(config)
+    else:
+        sensor, fan, microphone = build_hardware(args.simulate, config)
     bus = PahoBus(config, CLIENT_ID, status_topic=topics.ROOM_STATUS)
     core = RoomCore(bus, SystemClock(), sensor, fan)
     core.start()
