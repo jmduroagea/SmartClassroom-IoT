@@ -37,9 +37,9 @@ if [[ ! -f "$REPO_DIR/.env" ]]; then
   fi
 fi
 
-step "1/8 System packages (git, Python venv, Mosquitto)"
+step "1/8 System packages (git, Python venv, Mosquitto, tmux)"
 sudo apt-get update -qq
-sudo apt-get install -y -qq git python3-venv mosquitto mosquitto-clients
+sudo apt-get install -y -qq git python3-venv mosquitto mosquitto-clients tmux
 
 step "2/8 Project repository"
 if [[ -d "$REPO_DIR/.git" ]]; then
@@ -106,14 +106,14 @@ grep -v "^WEB_PASSWORD" "$REPO_DIR/.env"
 
 step "WHAT CHANGED (and how to undo it)"
 cat <<EOF
-- apt: git python3-venv mosquitto mosquitto-clients
-      undo: sudo apt-get remove mosquitto mosquitto-clients
+- apt: git python3-venv mosquitto mosquitto-clients tmux
+      undo: sudo apt-get remove mosquitto mosquitto-clients tmux
 - Broker config $MOSQUITTO_CONF_DST  undo: sudo rm $MOSQUITTO_CONF_DST
 - Node.js in /usr/local              undo: sudo rm -rf /usr/local/bin/{node,npm,npx,corepack} /usr/local/lib/node_modules /usr/local/include/node
 - Python packages in $VENV_DIR       undo: rm -rf $VENV_DIR
 - Repository and .env in $REPO_DIR   undo: rm -rf $REPO_DIR
 - Hostname $NEW_HOSTNAME             undo: sudo raspi-config nonint do_hostname raspberrypi
-After the reboot: ./deploy/run.sh brain   and, in another terminal,   ./deploy/run.sh web
+After the reboot: ./deploy/start_server.sh   (brain, web and emergency centre)
 EOF
 
 step "Rebooting (the connection will close; that is expected)"

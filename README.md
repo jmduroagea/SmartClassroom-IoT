@@ -299,10 +299,12 @@ Deployment is manual (below).
   repository, installs the pinned Python packages in `~/smartroom-venv`, writes the `.env` and
   reboots. The Door and Room scripts take the Server Pi's IP as argument; the Server script asks
   for the web password. Running a script again skips what is already done.
-- **Running:** `git pull`, then `./deploy/run.sh <door|room|brain|web>` in a terminal on the Pi
-  (the Server Pi needs two terminals: brain and web). It loads the Pi's `.env` and starts the
-  program; Ctrl+C stops it. There are no services: if a program or the SSH session stops, start
-  it again.
+- **Running:** `git pull`, then `./deploy/run.sh <door|room>` in a terminal on the Door and Room
+  Pis. It loads the Pi's `.env` and starts the program; Ctrl+C stops it. On the Server Pi,
+  `./deploy/start_server.sh` starts the brain, the web and the emergency centre in one tmux
+  session (one window each, Ctrl+B then 0, 1 or 2 to change, Ctrl+B then D to leave them
+  running); `./deploy/start_server.sh stop` stops them. They survive a dropped SSH connection;
+  run the script again to see them. There are no services: after a reboot, start them again.
 - **Configuration:** each Pi has a `.env` (never committed), written by its setup script: the
   Server Pi's IP as `MQTT_HOST` on the Door and Room Pis; the MongoDB URI and the web password on
   the Server Pi. The programs only read environment variables, so always start them with
