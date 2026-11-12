@@ -135,6 +135,13 @@ def test_welcome_says_the_last_temperature(brain):
     scan(brain, "CARD_GLORIA")
     assert said(brain) == ["Welcome, Gloria. The temperature is 21.5 degrees."]
 
+def test_voice_temp_says_the_latest_reading(brain):
+    reading(brain, 21.0)
+    scan(brain, "CARD_GLORIA")
+    reading(brain, 23.5)
+    send(brain, topics.ROOM_VOICE, ts=TS, command="temp")
+    assert said(brain)[-1] == "The temperature is 23.5 degrees."
+
 
 def test_fan_from_the_web_is_ordered_and_its_state_saved(brain):
     send(brain, topics.WEB_CMD, action="fan", speed=2)
@@ -363,6 +370,9 @@ def test_help_voice_command_publishes_alert_call_in_inside_and_emergency(brain):
     assert calls[1]["reason"] == "help"
     assert calls[1]["emergency_id"] == brain.service.machine.emergency_id
 
+# Every different sentence the flows below make the brain say. Update it when a
+# sentence is added, so the test keeps proving it covers all of them.
+DISTINCT_SENTENCES_COVERED = 13
 
 def test_no_spoken_sentence_contains_wake_word(brain):
     """Every sentence the brain or alarm can speak must be free of WAKE_WORDS (#68)."""
@@ -372,15 +382,17 @@ def test_no_spoken_sentence_contains_wake_word(brain):
     brain.clock.advance(5.0)
     brain.clock.advance(30.0)
 
-    # 2. Entry without temperature reading + occupied room + normal exit
+    # 2. Entry without temperature reading + "temp" with no reading + occupied room + normal exit
     scan(brain, GLORIA["card_id"])
+    send(brain, topics.ROOM_VOICE, ts=TS, command="temp")
     brain.repo.save_user("OTHER_KNOWN_CARD", "Other")
     scan(brain, "OTHER_KNOWN_CARD")
     scan(brain, GLORIA["card_id"])
 
-    # 3. Entry with temperature reading + fan limits + "help" inside + emergency + "help"
+    # 3. Entry with temperature reading + "temp" + fan limits + "help" inside + emergency + "help"
     send(brain, topics.ROOM_ENV, ts=TS, temp=22.4)
     scan(brain, GLORIA["card_id"])
+    send(brain, topics.ROOM_VOICE, ts=TS, command="temp")
     for _ in range(4):
         send(brain, topics.ROOM_VOICE, ts=TS, command="hot")
     for _ in range(4):
@@ -395,7 +407,7 @@ def test_no_spoken_sentence_contains_wake_word(brain):
         scan(brain, f"UNKNOWN_{idx}")
 
     sentences = [*said(brain), ALARM_TEXT]
-    assert len(set(said(brain))) == 11
+    assert len(set(said(brain))) == DISTINCT_SENTENCES_COVERED
     for sentence in sentences:
         lower = sentence.lower()
         for wake in WAKE_WORDS:
