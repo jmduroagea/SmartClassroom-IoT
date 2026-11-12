@@ -160,6 +160,27 @@ class StateMachine:
             actions.append({"type": "system_event", "event": "unlocked", "device": "web", "detail": ""})
         return actions
 
+    def force_exit(self) -> list:
+        """Empties the room from the web when the person inside left without scanning.
+        Same as a normal exit, but nothing is said or lit at the door: nobody is there.
+        Only in INSIDE; anywhere else there is nobody to take out."""
+        if self.state != State.INSIDE:
+            return []
+        actions = [
+            {
+                "type": "access", "access": "forced_exit",
+                "card_id": self.current_user_card, "name": self.current_user_name,
+            },
+            {"type": "set_fan", "speed": 0},
+            {"type": "set_mic", "enabled": False},
+            {"type": "set_pir", "enabled": True},
+        ]
+        self.state = State.IDLE
+        self.fan_speed = 0
+        self.current_user_card = None
+        self.current_user_name = None
+        return actions
+
     def handle_emergency(self, trigger: str, temp: Optional[float] = None) -> list:
         """Declares the emergency from any state. A second one while active is ignored."""
         if trigger not in self.EMERGENCY_TRIGGERS:

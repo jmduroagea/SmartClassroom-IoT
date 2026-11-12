@@ -63,6 +63,7 @@ def test_wrong_alarm_message_is_rejected(data):
         {"action": "new_card", "card_id": "0F00A1B2C3", "name": "Gloria"},
         {"action": "simulate_emergency"},
         {"action": "end_emergency"},
+        {"action": "force_exit"},
     ],
 )
 

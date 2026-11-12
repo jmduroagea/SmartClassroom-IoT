@@ -119,6 +119,13 @@ body {
 }
 .locked-bar span { display: flex; gap: 10px; align-items: center; color: var(--orange); font-weight: 600; }
 .locked-bar svg { stroke: var(--orange); }
+.exit-bar {
+  margin-top: 16px; background: var(--ground); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+}
+.exit-bar span { color: var(--muted); font-weight: 600; }
+.exit-bar .unlock-form label { color: var(--muted); }
+.exit-bar .unlock-form input { border-color: #D5DBE3; }
 .unlock-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .unlock-form label { font-size: 13px; color: var(--orange); }
 .unlock-form input { height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #F3C38F; font-size: 14px; width: 150px; }
