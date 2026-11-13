@@ -110,6 +110,14 @@ class StateMachine:
             actions.append({"type": "access", "access": "denied", "card_id": card_id, "name": user_name})
             return actions
 
+        if self.state == State.INSIDE and card_id != self.current_user_card:
+            # Another card while the room is in use, known or not: the answer is
+            # the same, and it does not count towards the lock.
+            actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
+            actions.append({"type": "access", "access": "occupied", "card_id": card_id, "name": user_name})
+            actions.append({"type": "say", "text": "Room occupied."})
+            return actions
+
         self._cancel_timer()
 
         if not is_known:
@@ -148,23 +156,18 @@ class StateMachine:
             actions.append({"type": "set_pir", "enabled": False})
             actions.append({"type": "set_mic", "enabled": True})
 
-        elif self.state == State.INSIDE:
-            if self.current_user_card == card_id:
-                self.state = State.IDLE
-                self.current_user_card = None
-                self.current_user_name = None
-                name_str = user_name or "User"
-                actions.append({"type": "say", "text": f"Goodbye, {name_str}."})
-                actions.append({"type": "access", "access": "out", "card_id": card_id, "name": user_name})
-                actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
-                self.fan_speed = 0
-                actions.append({"type": "set_fan", "speed": 0})
-                actions.append({"type": "set_mic", "enabled": False})
-                actions.append({"type": "set_pir", "enabled": True})
-            else:
-                actions.append({"type": "set_led", "color": "red", "mode": "pulse"})
-                actions.append({"type": "access", "access": "occupied", "card_id": card_id, "name": user_name})
-                actions.append({"type": "say", "text": "Room occupied."})
+        elif self.state == State.INSIDE:  # only the occupant's own card gets here
+            self.state = State.IDLE
+            self.current_user_card = None
+            self.current_user_name = None
+            name_str = user_name or "User"
+            actions.append({"type": "say", "text": f"Goodbye, {name_str}."})
+            actions.append({"type": "access", "access": "out", "card_id": card_id, "name": user_name})
+            actions.append({"type": "set_led", "color": "green", "mode": "pulse"})
+            self.fan_speed = 0
+            actions.append({"type": "set_fan", "speed": 0})
+            actions.append({"type": "set_mic", "enabled": False})
+            actions.append({"type": "set_pir", "enabled": True})
 
         return actions
 

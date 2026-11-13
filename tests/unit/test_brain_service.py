@@ -398,9 +398,9 @@ def test_no_spoken_sentence_contains_wake_word(brain):
     for _ in range(4):
         send(brain, topics.ROOM_VOICE, ts=TS, command="cold")
     send(brain, topics.ROOM_VOICE, ts=TS, command="help")
-    send(brain, topics.WEB_CMD, ts=TS, action="simulate_emergency")
+    send(brain, topics.WEB_CMD, action="simulate_emergency")
     send(brain, topics.ROOM_VOICE, ts=TS, command="help")
-    send(brain, topics.WEB_CMD, ts=TS, action="end_emergency")
+    send(brain, topics.WEB_CMD, action="end_emergency")
 
     # 4. Unknown card x3 -> "Card not recognized." + "System locked"
     for idx in range(3):
