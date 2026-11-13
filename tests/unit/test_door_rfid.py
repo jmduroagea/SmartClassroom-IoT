@@ -25,6 +25,7 @@ def test_lower_case_hex_is_accepted_and_given_in_upper_case():
     "frame",
     [
         body(checksum="00"),                 # wrong checksum
+        body(card="0000000000", checksum="00"),  # all zeros: valid checksum, but no card
         body(end=b"\x00"),                   # no end byte
         body()[:-2],                         # cut
         body() + b"\x03",                    # too long

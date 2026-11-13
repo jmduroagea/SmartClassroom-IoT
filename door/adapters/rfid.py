@@ -19,6 +19,9 @@ END = b"\x03"
 ID_CHARS = 10
 CHECKSUM_CHARS = 2
 FRAME_BODY = ID_CHARS + CHECKSUM_CHARS + len(END)  # what follows the start byte
+# All zeros passes the checksum (the XOR of zeros is zero), but it is not a card:
+# the reader sent it with no card near it on the real Door Pi.
+NO_CARD = "0" * ID_CHARS
 BAUD_RATE = 9600
 READ_TIMEOUT_SECONDS = 1
 
@@ -39,7 +42,7 @@ def parse_frame(body: bytes) -> Optional[str]:
     expected = 0
     for i in range(0, ID_CHARS, 2):
         expected ^= int(card_id[i:i + 2], 16)
-    if expected != int(checksum, 16):
+    if expected != int(checksum, 16) or card_id == NO_CARD:
         return None
     return card_id.upper()
 

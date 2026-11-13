@@ -29,14 +29,25 @@ class TestStateMachine(unittest.TestCase):
         actions = self.sm.handle_card("CARD_JOSE", is_known=True, user_name="Jose")
         self.assertIn({"type": "say", "text": "Welcome, Jose. The temperature is 22.6 degrees."}, actions)
 
-    def test_unknown_card_while_inside_keeps_inside(self):
+    def test_unknown_card_while_inside_says_room_occupied(self):
         self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
         self.assertEqual(self.sm.state, State.INSIDE)
 
         actions = self.sm.handle_card("UNKNOWN", is_known=False)
         self.assertEqual(self.sm.state, State.INSIDE)  # Room remains occupied by Gloria
         self.assertEqual(self.sm.current_user_card, "CARD_GLORIA")
-        self.assertIn({"type": "say", "text": "Card not recognized."}, actions)
+        self.assertEqual(actions, [
+            {"type": "set_led", "color": "red", "mode": "pulse"},
+            {"type": "access", "access": "occupied", "card_id": "UNKNOWN", "name": None},
+            {"type": "say", "text": "Room occupied."},
+        ])
+
+    def test_unknown_cards_while_inside_never_lock_the_door(self):
+        self.sm.handle_card("CARD_GLORIA", is_known=True, user_name="Gloria")
+        for attempt in range(self.sm.MAX_FAILED_ATTEMPTS + 1):
+            self.sm.handle_card(f"UNKNOWN{attempt}", is_known=False)
+        self.assertEqual(self.sm.state, State.INSIDE)
+        self.assertEqual(self.sm.failed_attempts, 0)
 
     def test_lock_after_three_failures(self):
         self.sm.handle_card("UNKNOWN1", is_known=False)
